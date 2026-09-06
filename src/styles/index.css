@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-bg-deep: #0b0d10;
+    --color-bg-card: #14171d;
+    --color-bg-card-hover: #1c2028;
+    --color-tesla-red: #e82127;
+    --color-tesla-cyan: #00e5ff;
+    --color-tesla-green: #10b981;
+    --color-tesla-amber: #f59e0b;
+    --color-border: rgba(255, 255, 255, 0.08);
+  }
+
+  body {
+    background-color: var(--color-bg-deep);
+    color: #f3f4f6;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    overscroll-behavior-y: none;
+  }
+
+  h1, h2, h3, .font-heading {
+    font-family: 'Outfit', sans-serif;
+  }
+}
+
+/* Glassmorphism card utility */
+.glass-panel {
+  background: rgba(20, 23, 29, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+}
+
+.glass-panel-interactive {
+  background: rgba(20, 23, 29, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-panel-interactive:hover, .glass-panel-interactive:active {
+  background: rgba(28, 32, 40, 0.95);
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.6);
+}
+
+/* Neon glow accents */
+.glow-red {
+  box-shadow: 0 0 24px -4px rgba(232, 33, 39, 0.35);
+}
+
+.glow-cyan {
+  box-shadow: 0 0 24px -4px rgba(0, 229, 255, 0.35);
+}
+
+.glow-green {
+  box-shadow: 0 0 24px -4px rgba(16, 185, 129, 0.35);
+}
+
+/* Custom Sleek Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0b0d10;
+}
+::-webkit-scrollbar-thumb {
+  background: #272d38;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3e4656;
+}
+
+/* Leaflet dark mode overrides */
+.leaflet-container {
+  background-color: #121418 !important;
+  font-family: inherit;
+  border-radius: 1rem;
+}
+
+/* Optional inverted filter ONLY if using class .osm-inverted-dark */
+.osm-inverted-dark .leaflet-tile {
+  filter: brightness(0.8) invert(1) contrast(2.5) hue-rotate(200deg) saturate(0.3);
+}
+
+.leaflet-control-zoom a {
+  background-color: #1c2028 !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Shimmer pulse for background syncing */
+@keyframes syncPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.92); }
+}
+
+.animate-sync-pulse {
+  animation: syncPulse 2s infinite ease-in-out;
+}

@@ -1,0 +1,67 @@
+﻿name: Build iOS IPA (Tesla Local Stats)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    name: Compile iOS App and Package IPA
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web application (React + Vite)
+        run: npm run build
+
+      - name: Synchronize Capacitor iOS project
+        run: npx cap sync ios
+
+      - name: Install CocoaPods dependencies
+        run: |
+          cd ios/App
+          pod install
+
+      - name: Build iOS Archive with xcodebuild
+        run: |
+          xcodebuild clean build \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath ./build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Package Payload into .ipa
+        run: |
+          mkdir -p build/Payload
+          APP_PATH=$(find build/DerivedData -name "App.app" -type d | head -n 1)
+          echo "Found compiled App.app at: $APP_PATH"
+          cp -r "$APP_PATH" build/Payload/
+          cd build
+          zip -r TeslaLocalStats_castor_tech.ipa Payload
+          ls -lh TeslaLocalStats_castor_tech.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeslaLocalStats_castor_tech-IPA
+          path: build/TeslaLocalStats_castor_tech.ipa
+          retention-days: 30
