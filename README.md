@@ -61,18 +61,22 @@ Commercial alternatives like *Tessie*, *Stats for Tesla*, or cloud-hosted *Tesla
 
 ---
 
-## 📦 Download the Pre-compiled `.ipa` (GitHub Actions CI/CD)
+## 📦 Download the Pre-compiled `.ipa`
 
-Thanks to the automated continuous integration workflow running on Apple Silicon macOS runners (`macos-14`), an iOS `.ipa` package is automatically built on every commit:
+You can obtain the compiled iOS application package (`.ipa`) in two ways:
 
-1. Navigate to the **[Actions Tab in this GitHub repository](https://github.com/cast0rtech/Tietar/actions)**.
-2. Select the latest run of the workflow named **"Build iOS IPA (Tesla Local Stats)"**.
-3. Scroll down to the **Artifacts** section at the bottom of the summary page.
-4. Download the artifact:
+### Option 1: Direct Download from GitHub Releases (Recommended)
+1. Go to **[Releases on GitHub](https://github.com/cast0rtech/Tietar/releases)**.
+2. Under the latest release (`v1.0.0`), download:
    ```text
-   TeslaLocalStats_castor_tech-IPA.zip
+   TeslaLocalStats_castor_tech.ipa
    ```
-5. Extract the zip archive to obtain `TeslaLocalStats_castor_tech.ipa`.
+
+### Option 2: Continuous Integration Artifacts (GitHub Actions)
+Thanks to the automated CI workflow running on Apple Silicon macOS runners (`macos-14`), an iOS `.ipa` package is also built on every commit:
+1. Navigate to the **[Actions Tab in this GitHub repository](https://github.com/cast0rtech/Tietar/actions)**.
+2. Select the latest run of **"Build iOS IPA (Tesla Local Stats)"**.
+3. Under **Artifacts**, download `TeslaLocalStats_castor_tech-IPA.zip` and unzip it to extract `TeslaLocalStats_castor_tech.ipa`.
 
 ---
 
@@ -263,17 +267,22 @@ Las aplicaciones comerciales como *Tessie*, *Stats for Tesla* o implementaciones
 
 ---
 
-## 📦 Descarga del Archivo `.ipa` Compilado (GitHub Actions)
+## 📦 Descarga del Archivo `.ipa` Compilado
+ 
+Puedes obtener el instalador `.ipa` de dos formas directas:
 
+### Opción 1: Descarga Directa desde GitHub Releases (Recomendado)
+1. Entra en **[Releases de este repositorio](https://github.com/cast0rtech/Tietar/releases)**.
+2. En la versión más reciente (`v1.0.0`), haz clic para descargar:
+   ```text
+   TeslaLocalStats_castor_tech.ipa
+   ```
+
+### Opción 2: Artefactos de Integración Continua (GitHub Actions)
 Dado que las herramientas oficiales de Apple (`Xcode` y `xcodebuild`) requieren macOS, este repositorio cuenta con un **flujo de trabajo de integración continua (CI)** configurado en máquinas Apple Silicon (`macos-14`):
-
 1. Dirígete a la pestaña **[Actions de este repositorio en GitHub](https://github.com/cast0rtech/Tietar/actions)**.
 2. Selecciona la ejecución más reciente del flujo: **"Build iOS IPA (Tesla Local Stats)"**.
-3. En la sección inferior **Artifacts**, haz clic para descargar:
-   ```text
-   TeslaLocalStats_castor_tech-IPA.zip
-   ```
-4. Descomprime el archivo descargado para extraer tu instalador `TeslaLocalStats_castor_tech.ipa`.
+3. En la sección inferior **Artifacts**, descarga `TeslaLocalStats_castor_tech-IPA.zip` y descomprímelo para obtener `TeslaLocalStats_castor_tech.ipa`.
 
 ---
 

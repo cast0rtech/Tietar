@@ -1,8 +1,10 @@
-﻿name: Build iOS IPA (Tesla Local Stats)
+name: Build iOS IPA (Tesla Local Stats)
 
 on:
   push:
     branches: [ main ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -11,6 +13,8 @@ jobs:
   build-ipa:
     name: Compile iOS App and Package IPA
     runs-on: macos-14
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -65,3 +69,12 @@ jobs:
           name: TeslaLocalStats_castor_tech-IPA
           path: build/TeslaLocalStats_castor_tech.ipa
           retention-days: 30
+
+      - name: Release IPA on GitHub
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: build/TeslaLocalStats_castor_tech.ipa
+          name: Release ${{ github.ref_name }}
+          generate_release_notes: true
+
