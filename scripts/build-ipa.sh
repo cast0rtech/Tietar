@@ -49,9 +49,15 @@ echo "Found compiled App.app at: $APP_PATH"
 rm -rf build/Payload/*
 cp -r "$APP_PATH" build/Payload/
 
+echo "Signing bundle with ad-hoc signature for sideloading validation..."
+if [ -d "build/Payload/App.app/Frameworks" ]; then
+    find "build/Payload/App.app/Frameworks" -type d -name "*.framework" -exec codesign -s - --force --deep {} + 2>/dev/null || true
+fi
+codesign -s - --force --deep "build/Payload/App.app"
+
 cd build
 rm -f TeslaLocalStats_castor_tech.ipa
-zip -r TeslaLocalStats_castor_tech.ipa Payload
+zip -qry TeslaLocalStats_castor_tech.ipa Payload
 cd "$PROJECT_ROOT"
 
 # Copy to root and Desktop for quick access

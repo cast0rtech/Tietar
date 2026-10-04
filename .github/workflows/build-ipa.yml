@@ -59,8 +59,15 @@ jobs:
           APP_PATH=$(find build/DerivedData -name "App.app" -type d | head -n 1)
           echo "Found compiled App.app at: $APP_PATH"
           cp -r "$APP_PATH" build/Payload/
+          
+          # Perform ad-hoc code signing to generate valid _CodeSignature/CodeResources for sideloaders
+          if [ -d "build/Payload/App.app/Frameworks" ]; then
+            find "build/Payload/App.app/Frameworks" -type d -name "*.framework" -exec codesign -s - --force --deep {} + 2>/dev/null || true
+          fi
+          codesign -s - --force --deep "build/Payload/App.app"
+          
           cd build
-          zip -r TeslaLocalStats_castor_tech.ipa Payload
+          zip -qry TeslaLocalStats_castor_tech.ipa Payload
           ls -lh TeslaLocalStats_castor_tech.ipa
 
       - name: Upload IPA artifact
