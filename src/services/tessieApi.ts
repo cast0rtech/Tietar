@@ -1,5 +1,5 @@
 // Cliente Tessie API oficial (https://api.tessie.com)
-import type { Vehicle, VehicleTelemetry } from '../types/tesla';
+import type { Vehicle, VehicleTelemetry, VehicleStateEnum } from '../types/tesla';
 
 export class TessieApiClient {
   private accessToken: string | null = null;
@@ -51,15 +51,16 @@ export class TessieApiClient {
     const data: any = await this.fetchApi<any>('/vehicles');
     const list = data?.results || (Array.isArray(data) ? data : []);
 
-    return list.map((v: any, index: number) => ({
-      id: v.vin || `tessie_${index}`,
+    return list.map((v: any, index: number): Vehicle => ({
+      id: String(v.vin || `tessie_${index}`),
+      vehicle_id: Number(v.id || index + 1),
       vin: v.vin || `VIN_TESSIE_${index}`,
       display_name: v.display_name || v.details?.display_name || 'Tesla (Tessie)',
       model: v.details?.model || 'Model Y',
       trim: v.details?.trim || 'Long Range AWD',
       color: v.details?.paint || 'Pearl White',
-      software_version: v.last_state?.vehicle_state?.car_version || '2024.44.25',
-      year: v.details?.year || 2024,
+      car_version: v.last_state?.vehicle_state?.car_version || '2024.44.25',
+      odometer: Math.round((v.last_state?.vehicle_state?.odometer || 0) * 1.60934),
       battery_capacity_kwh: 75,
     }));
   }
@@ -82,7 +83,6 @@ export class TessieApiClient {
     command: string,
     params: Record<string, any> = {}
   ): Promise<{ result: boolean; reason?: string }> {
-    // Mapeo amigable de comandos estándar a endpoints de Tessie
     const endpointMap: Record<string, string> = {
       door_lock: 'lock',
       door_unlock: 'unlock',
@@ -114,7 +114,7 @@ export class TessieApiClient {
     const cls = raw.climate_state || {};
     const vs = raw.vehicle_state || {};
 
-    let calcState: any = 'online';
+    let calcState: VehicleStateEnum = 'online';
     if (ds.shift_state === 'D' || ds.shift_state === 'R') {
       calcState = 'driving';
     } else if (cs.charging_state === 'Charging') {
@@ -129,37 +129,32 @@ export class TessieApiClient {
       battery_level: cs.battery_level ?? 0,
       usable_battery_level: cs.usable_battery_level ?? cs.battery_level ?? 0,
       battery_range_km: Math.round((cs.battery_range || 0) * 1.60934),
-      charge_limit_soc: cs.charge_limit_soc ?? 80,
-      charging_state: cs.charging_state || 'Disconnected',
-      charger_power_kw: cs.charger_power ?? 0,
+      est_battery_range_km: Math.round((cs.est_battery_range || cs.battery_range || 0) * 1.60934),
+      charge_energy_added: cs.charge_energy_added ?? 0,
+      charger_power: cs.charger_power ?? 0,
       charger_voltage: cs.charger_voltage ?? 0,
       charger_actual_current: cs.charger_actual_current ?? 0,
-      time_to_full_charge_hours: cs.time_to_full_charge ?? 0,
+      charging_state: cs.charging_state || 'Disconnected',
+      time_to_full_charge: cs.time_to_full_charge ?? 0,
+      latitude: ds.latitude ?? 40.4168,
+      longitude: ds.longitude ?? -3.7038,
+      heading: ds.heading ?? 0,
       speed_kmh: Math.round((ds.speed || 0) * 1.60934),
       power_kw: ds.power ?? 0,
-      odometer_km: Math.round((vs.odometer || 0) * 1.60934),
       shift_state: ds.shift_state || null,
-      latitude: ds.latitude || 40.4168,
-      longitude: ds.longitude || -3.7038,
-      heading: ds.heading || 0,
-      inside_temp_c: cls.inside_temp ?? 20,
-      outside_temp_c: cls.outside_temp ?? 15,
+      inside_temp: cls.inside_temp ?? 20,
+      outside_temp: cls.outside_temp ?? 18,
       is_climate_on: cls.is_climate_on ?? false,
-      sentry_mode: vs.sentry_mode ?? false,
       locked: vs.locked ?? true,
-      tire_pressure_bar: {
-        front_left: (vs.tpms_pressure_fl || 2.9),
-        front_right: (vs.tpms_pressure_fr || 2.9),
-        rear_left: (vs.tpms_pressure_rl || 2.9),
-        rear_right: (vs.tpms_pressure_rr || 2.9),
-      },
+      sentry_mode: vs.sentry_mode ?? false,
+      valet_mode: vs.valet_mode ?? false,
       doors_open: {
-        df: vs.df === 1,
-        dr: vs.dr === 1,
-        pf: vs.pf === 1,
-        pr: vs.pr === 1,
-        ft: vs.ft === 1,
-        rt: vs.rt === 1,
+        df: vs.df === 1 || vs.df === true,
+        dr: vs.dr === 1 || vs.dr === true,
+        pf: vs.pf === 1 || vs.pf === true,
+        pr: vs.pr === 1 || vs.pr === true,
+        ft: vs.ft === 1 || vs.ft === true,
+        rt: vs.rt === 1 || vs.rt === true,
       },
     };
   }
