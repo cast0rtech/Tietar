@@ -38,16 +38,36 @@ xcodebuild clean build \
   CODE_SIGN_IDENTITY=""
 
 echo "4. Packaging Payload into .ipa..."
-APP_PATH=$(find build/DerivedData -name "App.app" -type d | head -n 1)
+APP_PATH=$(find build/DerivedData -name "App.app" -type d 2>/dev/null | head -n 1)
+
+if [ -z "$APP_PATH" ] && [ -d "build/Payload/App.app" ]; then
+    echo "ℹ️ Using existing build/Payload/App.app bundle..."
+    APP_PATH="build/Payload/App.app"
+fi
 
 if [ -z "$APP_PATH" ]; then
-    echo "❌ Error: App.app was not found in build/DerivedData."
+    echo "❌ Error: App.app was not found in build/DerivedData or build/Payload."
     exit 1
 fi
 
 echo "Found compiled App.app at: $APP_PATH"
-rm -rf build/Payload/*
-cp -r "$APP_PATH" build/Payload/
+if [ "$APP_PATH" != "build/Payload/App.app" ]; then
+    rm -rf build/Payload/*
+    cp -r "$APP_PATH" build/Payload/
+fi
+
+# Sync latest icons and public assets into the app bundle
+if [ -f "public/tietar_for_tesla.png" ]; then
+    cp public/tietar_for_tesla.png build/Payload/App.app/public/ 2>/dev/null || true
+    if command -v sips &> /dev/null; then
+        sips -z 120 120 public/tietar_for_tesla.png --out build/Payload/App.app/AppIcon60x60@2x.png &>/dev/null || true
+        sips -z 152 152 public/tietar_for_tesla.png --out "build/Payload/App.app/AppIcon76x76@2x~ipad.png" &>/dev/null || true
+    fi
+fi
+if [ -f "public/logo.png" ]; then cp public/logo.png build/Payload/App.app/public/ 2>/dev/null || true; fi
+if [ -f "public/favicon.png" ]; then cp public/favicon.png build/Payload/App.app/public/ 2>/dev/null || true; fi
+if [ -f "public/apple-touch-icon.png" ]; then cp public/apple-touch-icon.png build/Payload/App.app/public/ 2>/dev/null || true; fi
+if [ -f "index.html" ]; then cp index.html build/Payload/App.app/public/ 2>/dev/null || true; fi
 
 echo "Signing bundle with ad-hoc signature for sideloading validation..."
 if [ -d "build/Payload/App.app/Frameworks" ]; then

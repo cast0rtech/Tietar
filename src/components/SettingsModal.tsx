@@ -8,14 +8,19 @@ import {
   Moon, 
   Zap, 
   Navigation, 
-  Euro, 
   Check, 
-  Smartphone,
-  Info
+  Info,
+  Mail,
+  Car,
+  Cloud,
+  Lock,
+  LogOut
 } from 'lucide-react';
 import { teslaSimulator } from '../services/simulator';
 import { backgroundSync } from '../services/backgroundSync';
 import { teslaApi } from '../services/teslaApi';
+import { tessieApi } from '../services/tessieApi';
+import { authService, type AuthProviderType } from '../services/authService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -30,18 +35,67 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isSimulator,
   onToggleSimulator,
 }) => {
-  const [tokenInput, setTokenInput] = useState<string>('');
-  const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'tesla' | 'tessie' | 'email'>('tessie');
+  const [teslaToken, setTeslaToken] = useState<string>('');
+  const [tessieToken, setTessieToken] = useState<string>(tessieApi.getToken() || '');
+  const [emailInput, setEmailInput] = useState<string>('');
+  const [passwordInput, setPasswordInput] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(false);
+  const [feedback, setFeedback] = useState<{ success: boolean; message: string } | null>(null);
   const [simState, setSimState] = useState<string>('asleep');
 
   if (!isOpen) return null;
 
-  const handleSaveToken = () => {
-    if (tokenInput.trim()) {
-      teslaApi.setToken(tokenInput.trim());
-      setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 3000);
+  const currentSession = authService.getSession();
+
+  const handleSaveTesla = async () => {
+    if (!teslaToken.trim()) return;
+    setLoading(true);
+    try {
+      const res = await authService.loginWithTesla(teslaToken.trim());
+      setFeedback(res);
+      setTimeout(() => setFeedback(null), 4000);
+    } catch (err: any) {
+      setFeedback({ success: false, message: err.message });
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleSaveTessie = async () => {
+    if (!tessieToken.trim()) return;
+    setLoading(true);
+    setFeedback(null);
+    try {
+      const res = await authService.loginWithTessie(tessieToken.trim());
+      setFeedback(res);
+      setTimeout(() => setFeedback(null), 4000);
+    } catch (err: any) {
+      setFeedback({ success: false, message: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailAuth = async () => {
+    if (!emailInput.trim() || !passwordInput.trim()) return;
+    setLoading(true);
+    setFeedback(null);
+    try {
+      const res = await authService.loginWithEmail(emailInput.trim(), passwordInput.trim());
+      setFeedback(res);
+      setTimeout(() => setFeedback(null), 4000);
+    } catch (err: any) {
+      setFeedback({ success: false, message: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    authService.logout();
+    setFeedback({ success: true, message: 'Sesión cerrada. Modo demostración activo.' });
+    setTimeout(() => setFeedback(null), 3000);
   };
 
   const handleChangeSimState = (state: 'asleep' | 'online' | 'driving' | 'charging') => {
@@ -63,14 +117,171 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Título */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white">
-            <Settings className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-xl bg-black/40 border border-white/10 flex items-center justify-center text-white overflow-hidden">
+            <img src="/tietar_for_tesla.png" alt="Tietar" className="w-full h-full object-cover" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white font-heading">Configuración y Conexión</h3>
-            <p className="text-xs text-gray-400">Credenciales Tesla y modo simulador</p>
+            <h3 className="text-base font-bold text-white font-heading">Autenticación y Ajustes</h3>
+            <p className="text-xs text-gray-400">
+              Método activo: <span className="text-cyan-400 uppercase font-semibold">{currentSession.provider}</span>
+            </p>
           </div>
         </div>
+
+        {/* Notificación de feedback */}
+        {feedback && (
+          <div className={`p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 animate-fadeIn ${
+            feedback.success ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300' : 'bg-red-500/15 border-red-500/30 text-red-300'
+          }`}>
+            <Check className="w-4 h-4 shrink-0" />
+            <span>{feedback.message}</span>
+          </div>
+        )}
+
+        {/* Selector de pestañas para múltiples métodos de inicio de sesión */}
+        <div className="flex rounded-xl bg-black/40 p-1 border border-white/5 text-xs font-semibold">
+          <button
+            onClick={() => setActiveTab('tessie')}
+            className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition ${
+              activeTab === 'tessie' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Cloud className="w-3.5 h-3.5" />
+            Tessie API
+          </button>
+          <button
+            onClick={() => setActiveTab('tesla')}
+            className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition ${
+              activeTab === 'tesla' ? 'bg-red-500/20 text-red-300 border border-red-500/30 shadow' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Car className="w-3.5 h-3.5" />
+            Tesla Fleet
+          </button>
+          <button
+            onClick={() => setActiveTab('email')}
+            className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition ${
+              activeTab === 'email' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Mail className="w-3.5 h-3.5" />
+            Email
+          </button>
+        </div>
+
+        {/* PESTAÑA 1: TESSIE API TOKEN */}
+        {activeTab === 'tessie' && (
+          <div className="space-y-3 pt-1 animate-fadeIn">
+            <div>
+              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Cloud className="w-3.5 h-3.5 text-cyan-400" />
+                Token Personal de Tessie
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">
+                Conéctate mediante tu token generado en <span className="text-cyan-300">dash.tessie.com/settings/api</span>. Proporciona telemetría directa sin necesidad de configurar una app de desarrollador de Tesla.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <input
+                type="password"
+                placeholder="Pega aquí tu Tessie API Token"
+                value={tessieToken}
+                onChange={(e) => setTessieToken(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+              />
+              <button
+                disabled={loading}
+                onClick={handleSaveTessie}
+                className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20 transition disabled:opacity-50"
+              >
+                {loading ? <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                Validar y Conectar con Tessie
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* PESTAÑA 2: TESLA FLEET API */}
+        {activeTab === 'tesla' && (
+          <div className="space-y-3 pt-1 animate-fadeIn">
+            <div>
+              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Car className="w-3.5 h-3.5 text-red-500" />
+                Token Directo de Tesla (Fleet / Owner API)
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">
+                Token de acceso de Tesla oficial para conexión de flota directa sin intermediarios.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <input
+                type="password"
+                placeholder="Pega tu Tesla Access Token"
+                value={teslaToken}
+                onChange={(e) => setTeslaToken(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
+              />
+              <button
+                disabled={loading}
+                onClick={handleSaveTesla}
+                className="w-full py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 transition disabled:opacity-50"
+              >
+                {loading ? <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                Guardar Token de Tesla
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* PESTAÑA 3: EMAIL Y CONTRASEÑA */}
+        {activeTab === 'email' && (
+          <div className="space-y-3 pt-1 animate-fadeIn">
+            <div>
+              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-purple-400" />
+                Autenticación Propia (Email y Contraseña)
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">
+                Inicia sesión con tu cuenta de usuario unificada para sincronizar tus ajustes locales.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <input
+                type="email"
+                placeholder="tu-email@ejemplo.com"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+              />
+              <input
+                type="password"
+                placeholder="Contraseña"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+              />
+              <button
+                disabled={loading}
+                onClick={handleEmailAuth}
+                className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20 transition disabled:opacity-50"
+              >
+                {loading ? <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Lock className="w-3.5 h-3.5" />}
+                Iniciar Sesión / Registrar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Botón cerrar sesión si está autenticado */}
+        {currentSession.isAuthenticated && (
+          <button
+            onClick={handleLogout}
+            className="w-full py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-red-400 text-xs flex items-center justify-center gap-1.5 border border-white/5 transition"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            Cerrar Sesión ({currentSession.displayName})
+          </button>
+        )}
 
         {/* Interruptor Modo Simulador vs Tesla Real */}
         <div className="glass-panel p-3.5 rounded-xl border border-white/5 flex items-center justify-between">
@@ -143,44 +354,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         )}
 
-        {/* Conexión Tesla API Real */}
-        <div className="space-y-2 pt-1">
-          <div className="text-xs font-bold text-white flex items-center gap-1.5">
-            <Key className="w-3.5 h-3.5 text-red-500" />
-            Token de Acceso Tesla (Fleet / Owner API)
-          </div>
-          <p className="text-[11px] text-gray-400">
-            Tus credenciales se almacenan exclusivamente en el almacenamiento local cifrado de tu dispositivo Android.
-          </p>
-          <div className="space-y-2">
-            <input
-              type="password"
-              placeholder="Pega aquí tu Tesla Access Token o Refresh Token"
-              value={tokenInput}
-              onChange={(e) => setTokenInput(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
-            />
-            <button
-              onClick={handleSaveToken}
-              className="w-full py-2 px-3 rounded-xl bg-red-600 hover:bg-red-700 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 transition"
-            >
-              <Check className="w-3.5 h-3.5" />
-              Guardar Credenciales en Local
-            </button>
-          </div>
-          {savedSuccess && (
-            <div className="text-xs text-emerald-400 font-semibold flex items-center gap-1 mt-1">
-              <Check className="w-3.5 h-3.5" />
-              Credenciales guardadas en el almacenamiento seguro local.
-            </div>
-          )}
-        </div>
-
         {/* Aviso de Privacidad y Funcionamiento Local */}
         <div className="glass-panel p-3.5 rounded-xl border border-white/5 flex items-start gap-2.5 text-xs text-gray-400">
           <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
           <p className="leading-relaxed">
-            <strong className="text-white">100% Local:</strong> Esta aplicación no envía tus datos de telemetría, ubicación ni contraseñas a ningún servidor de terceros. Solo se conecta directamente a los servidores de Tesla y a tu Google Drive si decides activarlo.
+            <strong className="text-white">100% Privado y Seguro:</strong> Las claves de API y sesiones se conservan únicamente en el almacenamiento protegido de tu dispositivo.
           </p>
         </div>
       </div>

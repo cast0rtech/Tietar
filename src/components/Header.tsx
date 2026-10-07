@@ -71,8 +71,8 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-4xl mx-auto flex items-center justify-between">
         {/* Nombre del Vehículo y Estado con Logo Castor Tech */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shadow-lg shadow-emerald-500/20 border border-emerald-500/30 overflow-hidden">
-            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+          <div className="w-10 h-10 rounded-xl bg-black/40 flex items-center justify-center shadow-lg shadow-cyan-500/10 border border-white/10 overflow-hidden">
+            <img src="/tietar_for_tesla.png" alt="Tietar Logo" className="w-full h-full object-cover" />
           </div>
           <div>
             <div className="flex items-center gap-2">

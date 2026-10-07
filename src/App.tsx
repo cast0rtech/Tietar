@@ -4,6 +4,9 @@ import { initializeSeedDataIfEmpty } from './db/seedData';
 import { backgroundSync } from './services/backgroundSync';
 import { teslaSimulator } from './services/simulator';
 import type { Vehicle, VehicleTelemetry } from './types/tesla';
+import { authService } from './services/authService';
+import { tessieApi } from './services/tessieApi';
+import { teslaApi } from './services/teslaApi';
 
 // Componentes
 import { Header } from './components/Header';
@@ -97,7 +100,23 @@ export const App: React.FC = () => {
       await backgroundSync.performSyncTick();
       return res;
     }
-    // TODO: Si usa API real, llamar a teslaApi.sendCommand()
+    const session = authService.getSession();
+    if (session.provider === 'tessie' && vehicle) {
+      try {
+        const res = await tessieApi.sendCommand(String(vehicle.id), cmd);
+        return { success: res.result, message: res.result ? `Comando '${cmd}' ejecutado en Tessie` : `Error: ${res.reason || 'rechazado'}` };
+      } catch (err: any) {
+        return { success: false, message: `Error Tessie: ${err.message}` };
+      }
+    }
+    if (session.provider === 'tesla' && vehicle) {
+      try {
+        const res = await teslaApi.sendCommand(vehicle.id, cmd as any);
+        return { success: res.result, message: res.result ? `Comando '${cmd}' enviado a Tesla` : `Error: ${res.reason || 'rechazado'}` };
+      } catch (err: any) {
+        return { success: false, message: `Error Tesla: ${err.message}` };
+      }
+    }
     return { success: true, message: `Comando '${cmd}' enviado al vehículo.` };
   };
 
