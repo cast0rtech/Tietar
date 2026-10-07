@@ -1,6 +1,7 @@
 // Gestor unificado de autenticación multi-método para Tietar
 import { teslaApi } from './teslaApi';
 import { tessieApi } from './tessieApi';
+import { backgroundSync } from './backgroundSync';
 
 export type AuthProviderType = 'demo' | 'tesla' | 'tessie' | 'email';
 
@@ -63,6 +64,10 @@ export class AuthService {
           isAuthenticated: true,
         };
       }
+
+      // Desactivar simulador automáticamente si hay un proveedor real conectado
+      const isRealProvider = (savedProvider === 'tessie' && !!savedTessieToken) || (savedProvider === 'tesla' && !!savedTeslaToken);
+      backgroundSync.setSimulatorMode(!isRealProvider);
     } catch {
       // Fallback a demo si falla el parseo
     }
@@ -95,7 +100,11 @@ export class AuthService {
       localStorage.setItem(STORAGE_KEYS.TESSIE_TOKEN, trimmed);
       localStorage.setItem(STORAGE_KEYS.USER_SESSION, JSON.stringify(this.currentSession));
 
-      return { success: true, message: `Conectado a Tessie exitosamente (${vehicles.length} vehículos)` };
+      // Activar inmediatamente modo real y forzar lectura de telemetría online
+      backgroundSync.setSimulatorMode(false);
+      await backgroundSync.performSyncTick();
+
+      return { success: true, message: `Conectado a Tessie exitosamente (${vehicles.length} vehículos). Telemetría en vivo activa.` };
     } catch (err: any) {
       throw new Error(`Error validando token con Tessie: ${err.message}`);
     }
@@ -119,7 +128,14 @@ export class AuthService {
     localStorage.setItem(STORAGE_KEYS.TESLA_TOKEN, trimmed);
     localStorage.setItem(STORAGE_KEYS.USER_SESSION, JSON.stringify(this.currentSession));
 
-    return { success: true, message: 'Token de Tesla configurado exitosamente' };
+    backgroundSync.setSimulatorMode(false);
+    try {
+      await backgroundSync.performSyncTick();
+    } catch (err: any) {
+      console.warn('Sync inicial con Tesla falló:', err.message);
+    }
+
+    return { success: true, message: 'Token de Tesla configurado exitosamente. Telemetría en vivo activa.' };
   }
 
   // 3. Iniciar sesión con Email y Contraseña

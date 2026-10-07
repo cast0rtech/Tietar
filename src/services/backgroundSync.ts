@@ -1,17 +1,20 @@
 // Servicio de Sincronización en Segundo Plano y Registro Automático de Viajes y Cargas
 import { db } from '../db/database';
 import { teslaApi } from './teslaApi';
+import { tessieApi } from './tessieApi';
 import { teslaSimulator } from './simulator';
 import { sleepWatchdog } from './sleepWatchdog';
-import type { VehicleTelemetry, DriveRecord, DrivePoint, ChargeRecord } from '../types/tesla';
+import type { Vehicle, VehicleTelemetry, DriveRecord, DrivePoint, ChargeRecord } from '../types/tesla';
 
 export type SyncListener = (telemetry: VehicleTelemetry) => void;
+export type VehicleListener = (vehicle: Vehicle) => void;
 
 class BackgroundSyncService {
   private timerId: any = null;
   private isRunning: boolean = false;
-  private useSimulator: boolean = true;
+  private useSimulator: boolean = false;
   private listeners: Set<SyncListener> = new Set();
+  private vehicleListeners: Set<VehicleListener> = new Set();
   
   // Seguimiento de Viaje Activo
   private activeDriveId: number | null = null;
@@ -25,11 +28,14 @@ class BackgroundSyncService {
   private activeChargeStartTime: number | null = null;
   private activeChargeStartSoc: number | null = null;
 
-  // Última telemetría en memoria
+  // Vehículo actual y última telemetría
+  private currentVehicle: Vehicle | null = null;
   private lastTelemetry: VehicleTelemetry | null = null;
 
   constructor() {
-    // Iniciar con simulador por defecto
+    // Si no hay token de Tessie ni de Tesla configurado, usar simulador
+    const hasRealToken = tessieApi.hasToken() || teslaApi.hasToken();
+    this.useSimulator = !hasRealToken;
   }
 
   setSimulatorMode(enabled: boolean) {
@@ -46,8 +52,18 @@ class BackgroundSyncService {
     return () => this.listeners.delete(listener);
   }
 
+  addVehicleListener(listener: VehicleListener) {
+    this.vehicleListeners.add(listener);
+    if (this.currentVehicle) listener(this.currentVehicle);
+    return () => this.vehicleListeners.delete(listener);
+  }
+
   getLastTelemetry(): VehicleTelemetry | null {
     return this.lastTelemetry;
+  }
+
+  getCurrentVehicle(): Vehicle | null {
+    return this.currentVehicle;
   }
 
   start() {
@@ -74,65 +90,103 @@ class BackgroundSyncService {
       console.error('Error en ciclo de sincronización:', err);
     }
 
-    // Calcular siguiente intervalo según el watchdog de sueño
+    // Intervalo de consulta (mínimo 10s para proteger la batería del coche)
     const watchdog = sleepWatchdog.evaluate();
-    const intervalMs = Math.max(5000, watchdog.recommendedPollIntervalMs);
+    const intervalMs = Math.max(10000, watchdog.recommendedPollIntervalMs);
 
     this.timerId = setTimeout(() => this.syncLoop(), intervalMs);
   }
 
-  // Un ciclo de consulta y persistencia
+  // Un ciclo de consulta y persistencia en vivo
   async performSyncTick(): Promise<VehicleTelemetry> {
     let telemetry: VehicleTelemetry;
 
+    // 1. MODO SIMULADOR
     if (this.useSimulator) {
       telemetry = teslaSimulator.getTelemetry();
-    } else {
-      if (!teslaApi.hasToken()) {
-        throw new Error('Sin credenciales Tesla');
+    } 
+    // 2. MODO REAL: TESSIE API (Recomendado, directo y sin proxy)
+    else if (tessieApi.hasToken()) {
+      try {
+        const vehicles = await tessieApi.getVehicles();
+        if (!vehicles || vehicles.length === 0) {
+          throw new Error('No se encontraron vehículos vinculados en tu cuenta de Tessie.');
+        }
+
+        const realVehicle = vehicles[0];
+        this.currentVehicle = realVehicle;
+        await db.vehicles.put(realVehicle);
+        this.vehicleListeners.forEach(l => l(realVehicle));
+
+        // Obtener estado en tiempo real sin despertar el coche si duerme
+        telemetry = await tessieApi.getVehicleData(realVehicle.vin);
+      } catch (err: any) {
+        console.warn('Error sincronizando con Tessie API:', err.message);
+        if (this.lastTelemetry) {
+          telemetry = this.lastTelemetry;
+        } else {
+          throw err;
+        }
       }
-      // Si el watchdog indica silencio para dormir y no estamos conduciendo/cargando, no despertar
-      const watchdog = sleepWatchdog.evaluate();
-      if (watchdog.isAllowingSleep) {
-        // Solo consulta la lista rápida de vehículos que no despierta al coche
+    } 
+    // 3. MODO REAL: TESLA FLEET API
+    else if (teslaApi.hasToken()) {
+      try {
         const vehicles = await teslaApi.getVehicles();
-        const v: any = vehicles[0];
-        if (v && v.state === 'asleep') {
+        if (!vehicles || vehicles.length === 0) {
+          throw new Error('No se encontraron vehículos en tu cuenta de Tesla.');
+        }
+
+        const realVehicle = vehicles[0];
+        this.currentVehicle = realVehicle;
+        await db.vehicles.put(realVehicle);
+        this.vehicleListeners.forEach(l => l(realVehicle));
+
+        const watchdog = sleepWatchdog.evaluate();
+        if (watchdog.isAllowingSleep && (realVehicle as any).state === 'asleep') {
           telemetry = {
-            ...this.lastTelemetry!,
+            ...(this.lastTelemetry || teslaSimulator.getTelemetry()),
             state: 'asleep',
             timestamp: Date.now(),
           };
         } else {
-          telemetry = await teslaApi.getVehicleData(v.id || v.vehicle_id);
+          telemetry = await teslaApi.getVehicleData(realVehicle.id || realVehicle.vehicle_id);
         }
-      } else {
-        const vehicles = await teslaApi.getVehicles();
-        const v: any = vehicles[0];
-        telemetry = await teslaApi.getVehicleData(v.id || v.vehicle_id);
+      } catch (err: any) {
+        console.warn('Error sincronizando con Tesla API:', err.message);
+        if (this.lastTelemetry) {
+          telemetry = this.lastTelemetry;
+        } else {
+          throw err;
+        }
       }
+    } 
+    // Fallback: Si no hay tokens configurados, usar simulador
+    else {
+      this.useSimulator = true;
+      telemetry = teslaSimulator.getTelemetry();
     }
 
     this.lastTelemetry = telemetry;
     sleepWatchdog.updateVehicleState(telemetry.state, telemetry.speed_kmh);
 
-    // Notificar observadores (UI)
+    // Notificar a componentes UI
     this.listeners.forEach(l => l(telemetry));
 
-    // Lógica de grabación automática de viajes y cargas en base de datos local
-    await this.processDriveTracking(telemetry);
-    await this.processChargeTracking(telemetry);
+    // Registro automático de viajes y cargas
+    const vehicleId = this.currentVehicle?.id || 'tesla_current';
+    await this.processDriveTracking(telemetry, vehicleId);
+    await this.processChargeTracking(telemetry, vehicleId);
 
     return telemetry;
   }
 
-  // Registro de Viajes
-  private async processDriveTracking(telemetry: VehicleTelemetry) {
+  // Registro de Viajes en vivo
+  private async processDriveTracking(telemetry: VehicleTelemetry, vehicleId: string) {
     const isDriving = telemetry.state === 'driving' || (telemetry.speed_kmh && telemetry.speed_kmh > 5);
 
     if (isDriving) {
       if (!this.activeDriveId) {
-        // Iniciar nuevo viaje
         const now = Date.now();
         this.activeDriveStartTime = now;
         this.activeDriveStartSoc = telemetry.battery_level;
@@ -140,7 +194,7 @@ class BackgroundSyncService {
         this.activeDrivePointsCount = 0;
 
         const newDrive: DriveRecord = {
-          vehicle_id: 'tesla_model_y_lr_01',
+          vehicle_id: vehicleId,
           start_time: now,
           end_time: now,
           start_address: `Lat: ${telemetry.latitude.toFixed(3)}, Lon: ${telemetry.longitude.toFixed(3)}`,
@@ -161,7 +215,6 @@ class BackgroundSyncService {
         this.activeDriveId = (await db.drives.add(newDrive)) as number;
       }
 
-      // Guardar punto GPS del viaje
       if (this.activeDriveId) {
         const point: DrivePoint = {
           drive_id: this.activeDriveId,
@@ -171,15 +224,14 @@ class BackgroundSyncService {
           speed_kmh: telemetry.speed_kmh,
           power_kw: telemetry.power_kw,
           battery_level: telemetry.battery_level,
-          elevation_m: 750, // Estimada
+          elevation_m: 750,
           heading: telemetry.heading,
         };
         await db.drive_points.add(point);
         this.activeDrivePointsCount++;
 
-        // Actualizar datos acumulados del viaje
         const durationMin = Math.max(1, Math.round((Date.now() - this.activeDriveStartTime!) / 60000));
-        const estimatedKm = +(this.activeDrivePointsCount * 0.15).toFixed(1); // Incremento aproximado
+        const estimatedKm = +(this.activeDrivePointsCount * 0.15).toFixed(1);
         const socDiff = Math.max(0, (this.activeDriveStartSoc || telemetry.battery_level) - telemetry.battery_level);
         const kwhUsed = +(socDiff * 0.78).toFixed(1);
         const whKm = estimatedKm > 0 ? Math.round((kwhUsed * 1000) / estimatedKm) : 180;
@@ -195,7 +247,6 @@ class BackgroundSyncService {
         });
       }
     } else {
-      // El coche ya no está conduciendo: si había un viaje activo, cerrarlo
       if (this.activeDriveId) {
         await db.drives.update(this.activeDriveId, {
           end_time: Date.now(),
@@ -206,8 +257,8 @@ class BackgroundSyncService {
     }
   }
 
-  // Registro de Cargas
-  private async processChargeTracking(telemetry: VehicleTelemetry) {
+  // Registro de Cargas en vivo
+  private async processChargeTracking(telemetry: VehicleTelemetry, vehicleId: string) {
     const isCharging = telemetry.state === 'charging' || telemetry.charging_state === 'Charging';
 
     if (isCharging) {
@@ -217,7 +268,7 @@ class BackgroundSyncService {
         this.activeChargeStartSoc = telemetry.battery_level;
 
         const newCharge: ChargeRecord = {
-          vehicle_id: 'tesla_model_y_lr_01',
+          vehicle_id: vehicleId,
           start_time: now,
           end_time: now,
           location: telemetry.charger_power > 50 ? 'Tesla Supercharger' : 'Punto de Carga AC',
@@ -233,7 +284,6 @@ class BackgroundSyncService {
       }
 
       if (this.activeChargeId) {
-        // Guardar punto de curva
         await db.charge_points.add({
           charge_id: this.activeChargeId,
           timestamp: Date.now(),

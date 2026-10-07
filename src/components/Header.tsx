@@ -16,6 +16,8 @@ interface HeaderProps {
   vehicle: Vehicle | null;
   telemetry: VehicleTelemetry | null;
   isSimulator: boolean;
+  isRefreshing?: boolean;
+  syncError?: string | null;
   onRefresh: () => void;
   onOpenDriveModal: () => void;
   onOpenCsvModal: () => void;
@@ -26,6 +28,8 @@ export const Header: React.FC<HeaderProps> = ({
   vehicle,
   telemetry,
   isSimulator,
+  isRefreshing = false,
+  syncError,
   onRefresh,
   onOpenDriveModal,
   onOpenCsvModal,
@@ -79,9 +83,14 @@ export const Header: React.FC<HeaderProps> = ({
               <h1 className="text-base font-bold text-white tracking-tight">
                 {vehicle?.display_name || 'Tesla Model Y'}
               </h1>
-              {isSimulator && (
+              {isSimulator ? (
                 <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30">
                   Demo
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Live Online
                 </span>
               )}
             </div>
@@ -99,10 +108,11 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Botón Sincronizar / Refrescar */}
           <button
             onClick={onRefresh}
-            title="Sincronizar ahora"
-            className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-gray-300 hover:text-white transition border border-white/5"
+            disabled={isRefreshing}
+            title="Sincronizar ahora con la API"
+            className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-gray-300 hover:text-white transition border border-white/5 disabled:opacity-50"
           >
-            <RotateCw className="w-4 h-4" />
+            <RotateCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-cyan-400' : ''}`} />
           </button>
 
           {/* Copia de Seguridad Google Drive */}

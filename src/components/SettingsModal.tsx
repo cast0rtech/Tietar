@@ -27,6 +27,7 @@ interface SettingsModalProps {
   onClose: () => void;
   isSimulator: boolean;
   onToggleSimulator: (enabled: boolean) => void;
+  onConnected?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -34,6 +35,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   isSimulator,
   onToggleSimulator,
+  onConnected,
 }) => {
   const [activeTab, setActiveTab] = useState<'tesla' | 'tessie' | 'email'>('tessie');
   const [teslaToken, setTeslaToken] = useState<string>('');
@@ -54,6 +56,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     try {
       const res = await authService.loginWithTesla(teslaToken.trim());
       setFeedback(res);
+      if (onConnected) onConnected();
       setTimeout(() => setFeedback(null), 4000);
     } catch (err: any) {
       setFeedback({ success: false, message: err.message });
@@ -69,6 +72,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     try {
       const res = await authService.loginWithTessie(tessieToken.trim());
       setFeedback(res);
+      if (onConnected) onConnected();
       setTimeout(() => setFeedback(null), 4000);
     } catch (err: any) {
       setFeedback({ success: false, message: err.message });

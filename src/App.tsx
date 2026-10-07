@@ -30,7 +30,9 @@ export const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<ActiveSection>('home');
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [telemetry, setTelemetry] = useState<VehicleTelemetry | null>(null);
-  const [isSimulator, setIsSimulator] = useState<boolean>(true);
+  const [isSimulator, setIsSimulator] = useState<boolean>(backgroundSync.isSimulator());
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   // Estados de Modales
   const [isDriveModalOpen, setIsDriveModalOpen] = useState<boolean>(false);
@@ -51,12 +53,18 @@ export const App: React.FC = () => {
     // Inicializar base de datos local y sincronización
     initApp();
 
-    const unsubscribe = backgroundSync.addListener((newTelemetry) => {
+    const unsubTelemetry = backgroundSync.addListener((newTelemetry) => {
       setTelemetry(newTelemetry);
+      setIsSimulator(backgroundSync.isSimulator());
+    });
+
+    const unsubVehicle = backgroundSync.addVehicleListener((realVehicle) => {
+      setVehicle(realVehicle);
     });
 
     return () => {
-      unsubscribe();
+      unsubTelemetry();
+      unsubVehicle();
       backgroundSync.stop();
     };
   }, []);
@@ -66,6 +74,7 @@ export const App: React.FC = () => {
     const v = await db.vehicles.toCollection().first();
     if (v) setVehicle(v);
 
+    setIsSimulator(backgroundSync.isSimulator());
     await updateStatsSummary();
 
     // Iniciar bucle de sincronización
@@ -90,8 +99,20 @@ export const App: React.FC = () => {
   };
 
   const handleRefresh = async () => {
-    await backgroundSync.performSyncTick();
-    await updateStatsSummary();
+    setIsRefreshing(true);
+    setSyncError(null);
+    try {
+      await backgroundSync.performSyncTick();
+      const v = await db.vehicles.toCollection().first();
+      if (v) setVehicle(v);
+      setIsSimulator(backgroundSync.isSimulator());
+      await updateStatsSummary();
+    } catch (err: any) {
+      setSyncError(err.message || 'Error al conectar con la API online.');
+      setTimeout(() => setSyncError(null), 6000);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleExecuteCommand = async (cmd: string): Promise<{ success: boolean; message: string }> => {
@@ -171,11 +192,21 @@ export const App: React.FC = () => {
         vehicle={vehicle}
         telemetry={telemetry}
         isSimulator={isSimulator}
+        isRefreshing={isRefreshing}
+        syncError={syncError}
         onRefresh={handleRefresh}
         onOpenDriveModal={() => setIsDriveModalOpen(true)}
         onOpenCsvModal={() => setIsCsvModalOpen(true)}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
       />
+
+      {/* Banner de alerta de conexión si la API online tiene aviso o el coche está durmiendo */}
+      {syncError && (
+        <div className="bg-red-500/15 border-b border-red-500/30 text-red-300 text-xs px-4 py-2.5 flex items-center justify-between max-w-4xl mx-auto w-full animate-fadeIn">
+          <span>⚠️ {syncError}</span>
+          <button onClick={() => setSyncError(null)} className="text-red-400 font-bold px-2 py-0.5 rounded hover:bg-white/5">✕</button>
+        </div>
+      )}
 
       {/* Contenido Principal */}
       <main className="flex-1 max-w-4xl w-full mx-auto p-4">
@@ -249,9 +280,11 @@ export const App: React.FC = () => {
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
         isSimulator={isSimulator}
+        onConnected={handleRefresh}
         onToggleSimulator={(val) => {
           setIsSimulator(val);
           backgroundSync.setSimulatorMode(val);
+          backgroundSync.performSyncTick().catch(() => {});
         }}
       />
     </div>
