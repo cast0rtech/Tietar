@@ -39,15 +39,19 @@ export const BatteryHealthSection: React.FC<BatteryHealthSectionProps> = ({
   };
 
   const hasRecords = history.length > 0;
+  const packCap = vehicle?.battery_capacity_kwh || 60;
+  const isLfp = (vehicle?.battery_type === 'LFP') || packCap <= 65;
+  const baselineRange = isLfp ? 418 : 512;
+
   const latest = hasRecords 
     ? history[history.length - 1] 
     : (vehicle ? {
         date: new Date().toISOString().split('T')[0],
         odometer_km: vehicle.odometer || 0,
-        nominal_full_pack_kwh: +(vehicle.battery_capacity_kwh * 0.96).toFixed(1),
-        original_capacity_kwh: vehicle.battery_capacity_kwh || 75,
+        nominal_full_pack_kwh: +(packCap * 0.96).toFixed(1),
+        original_capacity_kwh: packCap,
         degradation_percent: 4.0,
-        max_range_100_percent_km: 512,
+        max_range_100_percent_km: baselineRange,
       } : null);
 
   const healthPercent = latest ? +(100 - latest.degradation_percent).toFixed(1) : 0;

@@ -44,22 +44,32 @@ export const BatterySection: React.FC<BatterySectionProps> = ({
   const watchdog = sleepWatchdog.evaluate();
 
   // Capacidad disponible en kWh
-  const totalCapacity = vehicle?.battery_capacity_kwh ?? 75;
+  const totalCapacity = vehicle?.battery_capacity_kwh ?? 60;
   const currentKwh = +((soc / 100) * totalCapacity).toFixed(1);
+  const batteryType = vehicle?.battery_type || (totalCapacity <= 65 ? 'LFP' : 'NMC');
+  const isLfp = batteryType === 'LFP';
 
   return (
     <div className="space-y-4 pb-20">
       {/* Botón Volver y Título */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onBack}
-          className="p-2 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-gray-300 hover:text-white transition border border-white/5"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <div>
-          <h2 className="text-xl font-bold text-white font-heading">Estado de la Batería</h2>
-          <p className="text-xs text-gray-400">Nivel de carga, autonomía y pérdidas en reposo</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onBack}
+            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-gray-300 hover:text-white transition border border-white/5"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h2 className="text-xl font-bold text-white font-heading">Estado de la Batería</h2>
+            <p className="text-xs text-gray-400">Nivel de carga, autonomía y pérdidas en reposo</p>
+          </div>
+        </div>
+
+        {/* Badge Química */}
+        <div className="px-2.5 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span>{isLfp ? 'Modelo LFP (60 kWh)' : `${totalCapacity} kWh (${batteryType})`}</span>
         </div>
       </div>
 
@@ -119,6 +129,19 @@ export const BatterySection: React.FC<BatterySectionProps> = ({
           <div className="mt-3 text-xs text-gray-400">
             Energía disponible: <span className="font-bold text-white">{telemetry ? `${currentKwh} kWh` : '-- kWh'}</span> de {totalCapacity} kWh
           </div>
+
+          {/* Consejo para batería LFP */}
+          {isLfp && (
+            <div className="mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-left text-xs text-gray-300 w-full space-y-1">
+              <div className="font-bold text-emerald-300 flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                Química LFP (Fosfato de Hierro y Litio)
+              </div>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                Tesla recomienda cargar la batería al <strong className="text-white">100% regularmente</strong> (al menos una vez por semana) para calibrar el ordenador de a bordo (BMS). A diferencia de las baterías NMC, el pack LFP de 60 kWh no sufre degradación acelerada al cargarse al 100%.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

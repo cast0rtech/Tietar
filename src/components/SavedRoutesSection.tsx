@@ -253,37 +253,46 @@ export const SavedRoutesSection: React.FC<SavedRoutesSectionProps> = ({
           Tus Rutas Guardadas ({routes.length})
         </h3>
 
-        {routes.map((r) => {
-          const isSelected = selectedRoute?.id === r.id;
-          return (
-            <div
-              key={r.id || r.name}
-              onClick={() => setSelectedRoute(r)}
-              className={`p-3.5 rounded-2xl glass-panel-interactive border cursor-pointer ${
-                isSelected ? 'border-rose-500/50 bg-rose-950/20' : 'border-white/5'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-bold text-white flex items-center gap-1.5">
-                    <Bookmark className="w-3.5 h-3.5 text-rose-400" />
-                    {r.name}
+        {routes.length === 0 ? (
+          <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center text-xs text-gray-400">
+            No tienes rutas guardadas aún. Puedes guardar cualquier viaje de tu historial desde la sección <strong className="text-white">Trayectos</strong> tocando en <span className="text-rose-400">"Guardar en Rutas"</span> o grabar un recorrido en directo arriba.
+          </div>
+        ) : (
+          routes.map((r) => {
+            const isSelected = selectedRoute?.id === r.id;
+            return (
+              <div
+                key={r.id || r.name}
+                onClick={() => {
+                  setSelectedRoute(r);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className={`p-3.5 rounded-2xl glass-panel-interactive border cursor-pointer transition ${
+                  isSelected ? 'border-rose-500/50 bg-rose-950/20' : 'border-white/5 hover:border-white/15'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-bold text-white flex items-center gap-1.5">
+                      <Bookmark className="w-3.5 h-3.5 text-rose-400" />
+                      {r.name}
+                    </div>
+                    <div className="text-xs text-gray-400 flex items-center gap-2 mt-0.5">
+                      <span>{r.distance_km} km</span>
+                      <span>•</span>
+                      <span>{r.duration_minutes} min</span>
+                      <span>•</span>
+                      <span className="text-emerald-400">{r.consumption_wh_km} Wh/km</span>
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-400 flex items-center gap-2 mt-0.5">
-                    <span>{r.distance_km} km</span>
-                    <span>•</span>
-                    <span>{r.duration_minutes} min</span>
-                    <span>•</span>
-                    <span className="text-emerald-400">{r.consumption_wh_km} Wh/km</span>
-                  </div>
+                  <span className="text-xs font-semibold text-rose-400 bg-rose-500/10 px-2 py-1 rounded-lg border border-rose-500/20">
+                    Ver Mapa
+                  </span>
                 </div>
-                <span className="text-xs font-semibold text-rose-400 bg-rose-500/10 px-2 py-1 rounded-lg border border-rose-500/20">
-                  Ver Mapa
-                </span>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
     </div>
   );

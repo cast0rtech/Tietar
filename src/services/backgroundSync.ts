@@ -122,6 +122,17 @@ class BackgroundSyncService {
 
         const realVehicle = vehicles[0];
         realVehicle.is_selected = true;
+
+        // Preservar configuración personalizada de batería si ya existía en la base de datos local
+        const existingVehicle = await db.vehicles.get(realVehicle.id);
+        if (existingVehicle) {
+          realVehicle.battery_capacity_kwh = existingVehicle.battery_capacity_kwh || 60;
+          realVehicle.battery_type = existingVehicle.battery_type || 'LFP';
+        } else {
+          realVehicle.battery_capacity_kwh = 60;
+          realVehicle.battery_type = 'LFP';
+        }
+
         this.currentVehicle = realVehicle;
         await db.vehicles.put(realVehicle);
         this.vehicleListeners.forEach(l => l(realVehicle));
@@ -291,7 +302,7 @@ class BackgroundSyncService {
         const durationMin = Math.max(1, Math.round((now - this.activeDriveStartTime!) / 60000));
         const estimatedKm = +(this.activeDriveAccumulatedKm).toFixed(1);
         const socDiff = Math.max(0, (this.activeDriveStartSoc || telemetry.battery_level) - telemetry.battery_level);
-        const packKwh = this.currentVehicle?.battery_capacity_kwh || 75;
+        const packKwh = this.currentVehicle?.battery_capacity_kwh || 60;
         const kwhUsed = +((socDiff / 100) * packKwh).toFixed(1);
         const whKm = estimatedKm > 0.2 ? Math.round((kwhUsed * 1000) / estimatedKm) : 175;
 
@@ -398,7 +409,7 @@ class BackgroundSyncService {
 
         // Registrar solo si durmió más de 45 minutos y hubo pérdida detectable
         if (durationHours >= 0.75 && lossSoc > 0) {
-          const packCap = this.currentVehicle?.battery_capacity_kwh || 75;
+          const packCap = this.currentVehicle?.battery_capacity_kwh || 60;
           const lossKwh = +((lossSoc / 100) * packCap).toFixed(2);
           const lossKm = Math.round(lossSoc * 5.2);
 
@@ -436,11 +447,11 @@ class BackgroundSyncService {
         .first();
 
       if (!existingToday) {
-        const originalCap = vehicle.battery_capacity_kwh || 75;
+        const originalCap = vehicle.battery_capacity_kwh || 60;
         const estFullRange = telemetry.battery_range_km && telemetry.battery_level > 0
           ? Math.round((telemetry.battery_range_km / (telemetry.battery_level / 100)))
-          : 515;
-        const baselineRange = 533; // Estándar oficial EPA
+          : 418;
+        const baselineRange = originalCap <= 65 ? 418 : 533; // Estándar oficial EPA para LFP 60kWh vs NMC 75kWh
         const degPercent = Math.max(0, Math.min(25, +((1 - (estFullRange / baselineRange)) * 100).toFixed(1)));
         const nominalPack = +(originalCap * (1 - (degPercent / 100))).toFixed(1);
 

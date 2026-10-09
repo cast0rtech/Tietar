@@ -9,6 +9,8 @@ interface LeafletMapViewProps {
   startAddress?: string;
   endAddress?: string;
   heightClass?: string;
+  onFetchPoints?: () => void;
+  isLoadingPoints?: boolean;
 }
 
 type TileSource = 'osm' | 'dark' | 'satellite';
@@ -40,6 +42,8 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
   startAddress,
   endAddress,
   heightClass = 'h-72',
+  onFetchPoints,
+  isLoadingPoints = false,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -201,9 +205,20 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
 
   if (points.length === 0) {
     return (
-      <div className={`w-full ${heightClass} rounded-2xl glass-panel flex flex-col items-center justify-center text-gray-400 text-xs border border-white/5`}>
-        <Compass className="w-8 h-8 text-gray-500 mb-2 animate-spin" />
-        <span>Sin puntos GPS registrados en este trayecto</span>
+      <div className={`w-full ${heightClass} rounded-2xl glass-panel flex flex-col items-center justify-center text-gray-400 text-xs border border-white/5 p-4 text-center space-y-2`}>
+        <Compass className={`w-8 h-8 text-cyan-400 ${isLoadingPoints ? 'animate-spin' : ''}`} />
+        <span className="text-gray-300 font-medium">
+          {isLoadingPoints ? 'Descargando puntos GPS de Tessie...' : 'Sin puntos GPS cargados en local'}
+        </span>
+        {onFetchPoints && !isLoadingPoints && (
+          <button
+            onClick={onFetchPoints}
+            className="mt-2 px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 active:scale-95 text-cyan-300 border border-cyan-500/30 text-xs font-semibold flex items-center gap-1.5 transition"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Descargar Ruta GPS desde Tessie</span>
+          </button>
+        )}
       </div>
     );
   }

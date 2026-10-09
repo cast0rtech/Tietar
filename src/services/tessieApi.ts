@@ -81,17 +81,26 @@ export class TessieApiClient {
       const odometerMiles = vs.odometer || 0;
       const odometerKm = Math.round(odometerMiles * 1.60934);
 
+      // Si no viene reportada o es 75 por defecto, fijar modelo CATL LFP 60 kWh
+      let batteryCap = cs.battery_capacity;
+      let batteryType = 'LFP';
+      if (!batteryCap || batteryCap === 75) {
+        batteryCap = 60;
+        batteryType = 'LFP';
+      }
+
       return {
         id: String(vin),
         vehicle_id: Number(v.id || index + 1),
         vin: vin,
         display_name: v.display_name || v.details?.display_name || 'Tesla',
         model: v.details?.model || 'Model Y',
-        trim: v.details?.trim || 'Long Range AWD',
+        trim: v.details?.trim || 'Standard Range RWD (LFP 60 kWh)',
         color: v.details?.paint || 'Pearl White',
         car_version: vs.car_version || '2024.44',
         odometer: odometerKm,
-        battery_capacity_kwh: cs.battery_capacity || 75,
+        battery_capacity_kwh: batteryCap,
+        battery_type: batteryType,
         is_selected: true,
       };
     });
@@ -135,19 +144,29 @@ export class TessieApiClient {
         consumptionWhKm = 175;
       }
 
+      const startLat = d.starting_latitude !== undefined && d.starting_latitude !== null ? Number(d.starting_latitude) : undefined;
+      const startLng = d.starting_longitude !== undefined && d.starting_longitude !== null ? Number(d.starting_longitude) : undefined;
+      const endLat = d.ending_latitude !== undefined && d.ending_latitude !== null ? Number(d.ending_latitude) : undefined;
+      const endLng = d.ending_longitude !== undefined && d.ending_longitude !== null ? Number(d.ending_longitude) : undefined;
+
       const startAddr = d.starting_location || d.start_address || (
-        d.starting_latitude ? `Lat: ${Number(d.starting_latitude).toFixed(3)}, Lon: ${Number(d.starting_longitude).toFixed(3)}` : 'Inicio de trayecto'
+        startLat ? `Lat: ${startLat.toFixed(3)}, Lon: ${startLng?.toFixed(3)}` : 'Inicio de trayecto'
       );
       const endAddr = d.ending_location || d.end_address || (
-        d.ending_latitude ? `Lat: ${Number(d.ending_latitude).toFixed(3)}, Lon: ${Number(d.ending_longitude).toFixed(3)}` : 'Fin de trayecto'
+        endLat ? `Lat: ${endLat.toFixed(3)}, Lon: ${endLng?.toFixed(3)}` : 'Fin de trayecto'
       );
 
       return {
         vehicle_id: String(vin),
+        tessie_id: d.id ? Number(d.id) : undefined,
         start_time: startTime,
         end_time: endTime,
         start_address: startAddr,
         end_address: endAddr,
+        starting_latitude: startLat,
+        starting_longitude: startLng,
+        ending_latitude: endLat,
+        ending_longitude: endLng,
         distance_km: distanceKm,
         duration_minutes: durationMin,
         energy_used_kwh: energyUsedKwh,
@@ -169,20 +188,49 @@ export class TessieApiClient {
     try {
       const fromSec = Math.floor(from / 1000);
       const toSec = Math.floor(to / 1000);
-      const res: any = await this.fetchApi<any>(`/${vin}/driving_path?from=${fromSec}&to=${toSec}&format=json`);
-      const rawPoints = res?.results || res?.path || (Array.isArray(res) ? res : []);
 
-      return rawPoints.map((p: any): DrivePoint => ({
-        drive_id: 0,
-        timestamp: this.normalizeTs(p.timestamp || p.time),
-        latitude: Number(p.latitude ?? p.lat),
-        longitude: Number(p.longitude ?? p.lng ?? p.lon),
-        speed_kmh: Math.round(Number(p.speed || 0) * (p.speed_is_miles ? 1.60934 : 1)),
-        power_kw: Math.round(Number(p.power || 0)),
-        battery_level: Math.round(Number(p.battery_level ?? p.soc ?? 0)),
-        elevation_m: Math.round(Number(p.elevation ?? p.altitude ?? 650)),
-        heading: Math.round(Number(p.heading || 0)),
-      }));
+      // Endpoint oficial de Tessie: GET /{vin}/path?from=...&to=...&details=true
+      let res: any = null;
+      try {
+        res = await this.fetchApi<any>(`/${vin}/path?from=${fromSec}&to=${toSec}&details=true&format=json`);
+      } catch {
+        try {
+          res = await this.fetchApi<any>(`/${vin}/path?from=${fromSec}&to=${toSec}&format=json`);
+        } catch {
+          return [];
+        }
+      }
+
+      const rawPoints = res?.results || res?.path || (Array.isArray(res) ? res : []);
+      if (!Array.isArray(rawPoints) || rawPoints.length === 0) return [];
+
+      return rawPoints.map((p: any, idx: number): DrivePoint => {
+        if (typeof p === 'string') {
+          const parts = p.split(',');
+          return {
+            drive_id: 0,
+            timestamp: from + idx * 5000,
+            latitude: Number(parts[0]),
+            longitude: Number(parts[1]),
+            speed_kmh: 50,
+            power_kw: 15,
+            battery_level: 60,
+            elevation_m: 650,
+            heading: 0,
+          };
+        }
+        return {
+          drive_id: 0,
+          timestamp: this.normalizeTs(p.timestamp || p.time || (from + idx * 5000)),
+          latitude: Number(p.latitude ?? p.lat),
+          longitude: Number(p.longitude ?? p.lng ?? p.lon),
+          speed_kmh: Math.round(Number(p.speed || 0) * (p.speed_is_miles ? 1.60934 : 1)),
+          power_kw: Math.round(Number(p.power || 0)),
+          battery_level: Math.round(Number(p.battery_level ?? p.soc ?? 0)),
+          elevation_m: Math.round(Number(p.elevation ?? p.altitude ?? 650)),
+          heading: Math.round(Number(p.heading || 0)),
+        };
+      }).filter(p => !isNaN(p.latitude) && !isNaN(p.longitude) && (p.latitude !== 0 || p.longitude !== 0));
     } catch {
       return [];
     }
@@ -261,21 +309,62 @@ export class TessieApiClient {
           .filter(d => Math.abs(d.start_time - drive.start_time) < 120000)
           .first();
 
-        if (!exists) {
-          const driveId = (await db.drives.add(drive)) as number;
+        let targetDriveId: number;
+        if (exists && exists.id) {
+          targetDriveId = exists.id;
+          // Actualizar coordenadas y metadatos si no los tenía
+          if (drive.starting_latitude && !exists.starting_latitude) {
+            await db.drives.update(targetDriveId, {
+              starting_latitude: drive.starting_latitude,
+              starting_longitude: drive.starting_longitude,
+              ending_latitude: drive.ending_latitude,
+              ending_longitude: drive.ending_longitude,
+              tessie_id: drive.tessie_id,
+            });
+          }
+        } else {
+          targetDriveId = (await db.drives.add(drive)) as number;
           newDrivesCount++;
+        }
 
-          // Para los viajes más recientes, intentar descargar la ruta de puntos GPS para Leaflet
-          if (newDrivesCount <= 10) {
-            try {
-              const points = await this.getDrivingPath(vin, drive.start_time, drive.end_time);
-              if (points.length > 0) {
-                const pointsWithId = points.map(p => ({ ...p, drive_id: driveId }));
-                await db.drive_points.bulkAdd(pointsWithId);
+        // Comprobar si ya tenemos puntos GPS para este trayecto
+        const existingPointsCount = await db.drive_points.where('drive_id').equals(targetDriveId).count();
+        if (existingPointsCount === 0) {
+          let fetchedPoints: DrivePoint[] = [];
+          // Intentar descargar puntos GPS reales desde /{vin}/path
+          try {
+            fetchedPoints = await this.getDrivingPath(vin, drive.start_time, drive.end_time);
+          } catch {}
+
+          if (fetchedPoints.length > 0) {
+            const pointsWithId = fetchedPoints.map(p => ({ ...p, drive_id: targetDriveId }));
+            await db.drive_points.bulkAdd(pointsWithId);
+          } else if (drive.starting_latitude && drive.starting_longitude && drive.ending_latitude && drive.ending_longitude) {
+            // Sintetizar como mínimo waypoints de salida y llegada para que Leaflet siempre visualice el mapa
+            await db.drive_points.bulkAdd([
+              {
+                drive_id: targetDriveId,
+                timestamp: drive.start_time,
+                latitude: drive.starting_latitude,
+                longitude: drive.starting_longitude,
+                speed_kmh: drive.speed_avg_kmh || 50,
+                power_kw: 15,
+                battery_level: drive.start_soc || 60,
+                elevation_m: 650,
+                heading: 0,
+              },
+              {
+                drive_id: targetDriveId,
+                timestamp: drive.end_time,
+                latitude: drive.ending_latitude,
+                longitude: drive.ending_longitude,
+                speed_kmh: 0,
+                power_kw: 0,
+                battery_level: drive.end_soc || 59,
+                elevation_m: 650,
+                heading: 0,
               }
-            } catch {
-              // Si no hay ruta GPS detallada, continúa con el registro
-            }
+            ]);
           }
         }
       }
@@ -318,7 +407,7 @@ export class TessieApiClient {
         if (!existingHealth) {
           const healthVal = Number(healthData.health ?? healthData.capacity_percentage ?? 96);
           const degPercent = +(Math.max(0, 100 - healthVal)).toFixed(1);
-          const origCap = Number(healthData.original_capacity ?? vehicle.battery_capacity_kwh ?? 75);
+          const origCap = Number(vehicle.battery_capacity_kwh || healthData.original_capacity || 60);
           const nominalPack = +(origCap * (healthVal / 100)).toFixed(1);
 
           await db.battery_health.add({
@@ -328,7 +417,7 @@ export class TessieApiClient {
             nominal_full_pack_kwh: nominalPack,
             original_capacity_kwh: origCap,
             degradation_percent: degPercent,
-            max_range_100_percent_km: Math.round(Number(healthData.range_health ?? 515)),
+            max_range_100_percent_km: Math.round(Number(healthData.range_health ?? 418)),
           });
         }
       }

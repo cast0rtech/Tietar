@@ -10,6 +10,7 @@ export interface Vehicle {
   model: 'Model 3' | 'Model Y' | 'Model S' | 'Model X' | 'Cybertruck' | string;
   trim: string;
   battery_capacity_kwh: number;
+  battery_type?: 'LFP' | 'NMC' | 'NCA' | string;
   color: string;
   car_version: string;
   odometer: number;
@@ -54,10 +55,15 @@ export interface VehicleTelemetry {
 export interface DriveRecord {
   id?: number;
   vehicle_id: string;
+  tessie_id?: number;
   start_time: number;
   end_time: number;
   start_address: string;
   end_address: string;
+  starting_latitude?: number;
+  starting_longitude?: number;
+  ending_latitude?: number;
+  ending_longitude?: number;
   distance_km: number;
   duration_minutes: number;
   energy_used_kwh: number;

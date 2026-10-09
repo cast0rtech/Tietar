@@ -61,6 +61,18 @@ export async function purgeDemoSeedData(): Promise<{ deletedDrives: number; dele
     if (demoByVin) {
       await db.vehicles.delete(demoByVin.id);
     }
+
+    // 6. Migrar vehículos existentes a batería LFP de 60 kWh si tenían 75 kWh por defecto
+    const allVehicles = await db.vehicles.toArray();
+    for (const v of allVehicles) {
+      if (!v.battery_capacity_kwh || v.battery_capacity_kwh === 75) {
+        await db.vehicles.update(v.id, {
+          battery_capacity_kwh: 60,
+          battery_type: 'LFP',
+          trim: v.trim?.includes('Long Range') ? 'Standard Range RWD (LFP)' : (v.trim || 'Standard Range RWD'),
+        });
+      }
+    }
   } catch (err) {
     console.warn('Aviso limpiando datos demo:', err);
   }
@@ -70,9 +82,21 @@ export async function purgeDemoSeedData(): Promise<{ deletedDrives: number; dele
 
 /**
  * Inicialización limpia de la app: no inserta datos simulados ni ficticios.
- * En su lugar, asegura que la base de datos esté libre de rastros demo anteriores.
+ * En su lugar, asegura que la base de datos esté libre de rastros demo anteriores
+ * y que el modelo de batería esté correctamente configurado como LFP de 60 kWh.
  */
 export async function initializeSeedDataIfEmpty(): Promise<void> {
   // Limpiar cualquier residuo de demos anteriores para que sólo existan datos reales de la API
   await purgeDemoSeedData();
+
+  // Asegurar que el vehículo activo tenga 60 kWh LFP
+  const currentVehicles = await db.vehicles.toArray();
+  for (const v of currentVehicles) {
+    if (!v.battery_capacity_kwh || v.battery_capacity_kwh === 75) {
+      await db.vehicles.update(v.id, {
+        battery_capacity_kwh: 60,
+        battery_type: 'LFP',
+      });
+    }
+  }
 }

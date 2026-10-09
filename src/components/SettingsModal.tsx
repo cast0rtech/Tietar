@@ -17,8 +17,10 @@ import {
   LogOut,
   RefreshCw,
   Trash2,
-  Database
+  Database,
+  BatteryCharging
 } from 'lucide-react';
+import { db } from '../db/database';
 import { teslaSimulator } from '../services/simulator';
 import { backgroundSync } from '../services/backgroundSync';
 import { teslaApi } from '../services/teslaApi';
@@ -51,6 +53,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [syncProgressText, setSyncProgressText] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ success: boolean; message: string } | null>(null);
   const [simState, setSimState] = useState<string>('asleep');
+  const [selectedBatteryCap, setSelectedBatteryCap] = useState<number>(60);
+  const [selectedBatteryType, setSelectedBatteryType] = useState<string>('LFP');
+
+  React.useEffect(() => {
+    if (isOpen) {
+      db.vehicles.filter(v => v.is_selected === true).first().then(v => {
+        if (v) {
+          setSelectedBatteryCap(v.battery_capacity_kwh || 60);
+          setSelectedBatteryType(v.battery_type || 'LFP');
+        }
+      });
+    }
+  }, [isOpen]);
+
+  const handleUpdateBattery = async (cap: number, type: string) => {
+    setSelectedBatteryCap(cap);
+    setSelectedBatteryType(type);
+    const vehicles = await db.vehicles.toArray();
+    for (const v of vehicles) {
+      await db.vehicles.update(v.id, {
+        battery_capacity_kwh: cap,
+        battery_type: type,
+        trim: type === 'LFP' ? `Standard Range RWD (LFP ${cap} kWh)` : `Long Range AWD (${cap} kWh)`,
+      });
+    }
+    setFeedback({
+      success: true,
+      message: `Configuración guardada: Batería ${type} ${cap} kWh.`,
+    });
+    if (onConnected) onConnected();
+    setTimeout(() => setFeedback(null), 3000);
+  };
 
   if (!isOpen) return null;
 
@@ -378,6 +412,75 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <Trash2 className="w-3.5 h-3.5" />
             Limpiar
           </button>
+        </div>
+
+        {/* Modelo y Capacidad del Pack de Batería */}
+        <div className="glass-panel p-3.5 rounded-xl border border-white/5 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-bold text-white flex items-center gap-1.5">
+              <BatteryCharging className="w-3.5 h-3.5 text-emerald-400" />
+              Modelo de Batería y Química
+            </div>
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold">
+              {selectedBatteryType} ({selectedBatteryCap} kWh)
+            </span>
+          </div>
+          <p className="text-[11px] text-gray-400">
+            Ajusta el tamaño del pack para que la energía disponible y la curva de salud celular se calculen con precisión.
+          </p>
+
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <button
+              onClick={() => handleUpdateBattery(60, 'LFP')}
+              className={`p-2 rounded-xl border text-left transition ${
+                selectedBatteryCap === 60 && selectedBatteryType === 'LFP'
+                  ? 'bg-emerald-500/20 border-emerald-500 text-white font-bold'
+                  : 'bg-black/30 border-white/5 text-gray-300 hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span>LFP 60 kWh</span>
+                <span className="text-[9px] text-emerald-400 font-semibold px-1 rounded bg-emerald-500/20">Tu modelo</span>
+              </div>
+              <div className="text-[10px] text-gray-400 mt-0.5 font-normal">Standard Range RWD (CATL)</div>
+            </button>
+
+            <button
+              onClick={() => handleUpdateBattery(55, 'LFP')}
+              className={`p-2 rounded-xl border text-left transition ${
+                selectedBatteryCap === 55 && selectedBatteryType === 'LFP'
+                  ? 'bg-emerald-500/20 border-emerald-500 text-white font-bold'
+                  : 'bg-black/30 border-white/5 text-gray-300 hover:bg-white/5'
+              }`}
+            >
+              <div>LFP 55 kWh</div>
+              <div className="text-[10px] text-gray-400 mt-0.5 font-normal">SR+ 2020-2021</div>
+            </button>
+
+            <button
+              onClick={() => handleUpdateBattery(75, 'NMC')}
+              className={`p-2 rounded-xl border text-left transition ${
+                selectedBatteryCap === 75
+                  ? 'bg-emerald-500/20 border-emerald-500 text-white font-bold'
+                  : 'bg-black/30 border-white/5 text-gray-300 hover:bg-white/5'
+              }`}
+            >
+              <div>NMC 75 kWh</div>
+              <div className="text-[10px] text-gray-400 mt-0.5 font-normal">Long Range AWD</div>
+            </button>
+
+            <button
+              onClick={() => handleUpdateBattery(78, 'NMC')}
+              className={`p-2 rounded-xl border text-left transition ${
+                selectedBatteryCap === 78
+                  ? 'bg-emerald-500/20 border-emerald-500 text-white font-bold'
+                  : 'bg-black/30 border-white/5 text-gray-300 hover:bg-white/5'
+              }`}
+            >
+              <div>NMC 78 kWh</div>
+              <div className="text-[10px] text-gray-400 mt-0.5 font-normal">Performance / LR</div>
+            </button>
+          </div>
         </div>
 
         {/* Interruptor Modo Simulador vs Tesla Real */}
