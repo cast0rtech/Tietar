@@ -290,7 +290,10 @@ export const DrivesSection: React.FC<DrivesSectionProps> = ({
               {isSyncing ? 'Sincronizando viajes...' : 'Recoger viajes guardados en Tessie'}
             </button>
           )}
-             {/* Feedback de guardado en rutas */}
+        </div>
+      )}
+
+      {/* Feedback de guardado en rutas */}
       {savedRouteFeedback && (
         <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 text-xs flex items-center gap-2 animate-fadeIn">
           <Check className="w-4 h-4 shrink-0" />
