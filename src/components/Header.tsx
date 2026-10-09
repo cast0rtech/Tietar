@@ -81,7 +81,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base font-bold text-white tracking-tight">
-                {vehicle?.display_name || 'Tesla Model Y'}
+                {vehicle?.display_name || 'Tesla'}
               </h1>
               {isSimulator ? (
                 <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30">
@@ -97,7 +97,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center gap-2 mt-0.5">
               {getStateBadge()}
               <span className="text-xs text-gray-400 hidden sm:inline">
-                {vehicle?.model} • {vehicle?.trim}
+                {vehicle ? `${vehicle.model} • ${vehicle.trim}` : 'Sin conectar'}
               </span>
             </div>
           </div>

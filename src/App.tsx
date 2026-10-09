@@ -24,7 +24,7 @@ import { CsvExportModal } from './components/CsvExportModal';
 import { SettingsModal } from './components/SettingsModal';
 
 // Iconos barra inferior
-import { Home, BatteryCharging, Zap, Navigation, Sliders, Activity, Bookmark } from 'lucide-react';
+import { Home, BatteryCharging, Zap, Navigation, Bookmark } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<ActiveSection>('home');
@@ -39,14 +39,14 @@ export const App: React.FC = () => {
   const [isCsvModalOpen, setIsCsvModalOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
 
-  // Resumen de estadísticas
+  // Resumen de estadísticas reales
   const [statsSummary, setStatsSummary] = useState({
-    lastDriveKm: 56.4,
-    lastDriveWhKm: 198,
-    totalDrivesCount: 2,
-    lastChargeKwh: 48.5,
-    healthPercent: 95.9,
-    savedRoutesCount: 1,
+    lastDriveKm: 0,
+    lastDriveWhKm: 0,
+    totalDrivesCount: 0,
+    lastChargeKwh: 0,
+    healthPercent: 96.0,
+    savedRoutesCount: 0,
   });
 
   useEffect(() => {
@@ -70,9 +70,23 @@ export const App: React.FC = () => {
   }, []);
 
   const initApp = async () => {
+    // Limpiar restos de demos anteriores para que solo aparezcan datos reales
     await initializeSeedDataIfEmpty();
-    const v = await db.vehicles.toCollection().first();
-    if (v) setVehicle(v);
+
+    const activeVehicle = await db.vehicles.filter(v => v.is_selected === true).first() 
+      || await db.vehicles.toCollection().first();
+
+    if (activeVehicle) {
+      setVehicle(activeVehicle);
+      // Si tenemos token de Tessie, recoger todo el histórico guardado
+      if (tessieApi.hasToken()) {
+        tessieApi.syncAllTessieHistoricalData(activeVehicle)
+          .then(() => updateStatsSummary())
+          .catch(() => {});
+      }
+    } else {
+      setVehicle(null);
+    }
 
     setIsSimulator(backgroundSync.isSimulator());
     await updateStatsSummary();
@@ -89,12 +103,12 @@ export const App: React.FC = () => {
     const routesCount = await db.saved_routes.count();
 
     setStatsSummary({
-      lastDriveKm: lastDrive?.distance_km || 56.4,
-      lastDriveWhKm: lastDrive?.consumption_wh_km || 198,
-      totalDrivesCount: drivesCount || 2,
-      lastChargeKwh: lastCharge?.energy_added_kwh || 48.5,
-      healthPercent: lastHealth ? +(100 - lastHealth.degradation_percent).toFixed(1) : 95.9,
-      savedRoutesCount: routesCount || 1,
+      lastDriveKm: lastDrive ? lastDrive.distance_km : 0,
+      lastDriveWhKm: lastDrive ? lastDrive.consumption_wh_km : 0,
+      totalDrivesCount: drivesCount,
+      lastChargeKwh: lastCharge ? lastCharge.energy_added_kwh : 0,
+      healthPercent: lastHealth ? +(100 - lastHealth.degradation_percent).toFixed(1) : (vehicle ? 96.0 : 0),
+      savedRoutesCount: routesCount,
     });
   };
 
@@ -103,13 +117,58 @@ export const App: React.FC = () => {
     setSyncError(null);
     try {
       await backgroundSync.performSyncTick();
-      const v = await db.vehicles.toCollection().first();
-      if (v) setVehicle(v);
+      const currentV = await db.vehicles.filter(v => v.is_selected === true).first() 
+        || await db.vehicles.toCollection().first();
+      
+      if (currentV) {
+        setVehicle(currentV);
+        if (tessieApi.hasToken()) {
+          await tessieApi.syncAllTessieHistoricalData(currentV);
+        }
+      }
       setIsSimulator(backgroundSync.isSimulator());
       await updateStatsSummary();
     } catch (err: any) {
       setSyncError(err.message || 'Error al conectar con la API online.');
       setTimeout(() => setSyncError(null), 6000);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Función explícita para recoger todos los datos guardados en Tessie
+  const handleSyncTessie = async (): Promise<{ success: boolean; message: string }> => {
+    if (!tessieApi.hasToken()) {
+      setIsSettingsModalOpen(true);
+      return { success: false, message: 'Por favor, introduce tu Token de Tessie en Ajustes.' };
+    }
+
+    setIsRefreshing(true);
+    try {
+      let currentV = vehicle;
+      if (!currentV) {
+        const list = await tessieApi.getVehicles();
+        if (list && list.length > 0) {
+          currentV = list[0];
+          await db.vehicles.put(currentV);
+          setVehicle(currentV);
+        }
+      }
+
+      if (!currentV) {
+        throw new Error('No se encontró ningún vehículo vinculado en tu cuenta de Tessie.');
+      }
+
+      const res = await tessieApi.syncAllTessieHistoricalData(currentV);
+      await backgroundSync.performSyncTick();
+      await updateStatsSummary();
+
+      return {
+        success: true,
+        message: `Sincronización completa: ${res.newDrives} viajes nuevos (${res.totalDrives} en total) y ${res.newCharges} recargas nuevas (${res.totalCharges} en total).`,
+      };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Error al sincronizar datos con Tessie' };
     } finally {
       setIsRefreshing(false);
     }
@@ -146,9 +205,20 @@ export const App: React.FC = () => {
       case 'bateria':
         return <BatterySection telemetry={telemetry} vehicle={vehicle} onBack={() => setActiveSection('home')} />;
       case 'carga':
-        return <ChargingSection telemetry={telemetry} onBack={() => setActiveSection('home')} />;
+        return (
+          <ChargingSection 
+            telemetry={telemetry} 
+            onBack={() => { setActiveSection('home'); updateStatsSummary(); }} 
+            onSyncTessie={handleSyncTessie}
+          />
+        );
       case 'trayectos':
-        return <DrivesSection onBack={() => setActiveSection('home')} />;
+        return (
+          <DrivesSection 
+            onBack={() => { setActiveSection('home'); updateStatsSummary(); }} 
+            onSyncTessie={handleSyncTessie}
+          />
+        );
       case 'comandos':
         return (
           <VehicleCommands
@@ -179,6 +249,7 @@ export const App: React.FC = () => {
             vehicle={vehicle}
             onSelectSection={(sec) => setActiveSection(sec)}
             onExecuteQuickCommand={handleExecuteCommand}
+            onOpenSettings={() => setIsSettingsModalOpen(true)}
             statsSummary={statsSummary}
           />
         );
@@ -278,7 +349,10 @@ export const App: React.FC = () => {
       />
       <SettingsModal
         isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
+        onClose={() => {
+          setIsSettingsModalOpen(false);
+          updateStatsSummary();
+        }}
         isSimulator={isSimulator}
         onConnected={handleRefresh}
         onToggleSimulator={(val) => {

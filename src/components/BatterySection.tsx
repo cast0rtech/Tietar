@@ -1,17 +1,16 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   ArrowLeft, 
   BatteryCharging, 
   Moon, 
   Thermometer, 
-  ShieldAlert, 
   Zap, 
-  TrendingDown, 
   CheckCircle2,
   Clock
 } from 'lucide-react';
-import type { VehicleTelemetry, Vehicle } from '../types/tesla';
+import type { VehicleTelemetry, Vehicle, VampireDrainRecord } from '../types/tesla';
 import { sleepWatchdog } from '../services/sleepWatchdog';
+import { db } from '../db/database';
 
 interface BatterySectionProps {
   telemetry: VehicleTelemetry | null;
@@ -24,13 +23,28 @@ export const BatterySection: React.FC<BatterySectionProps> = ({
   vehicle,
   onBack,
 }) => {
-  const soc = telemetry?.battery_level ?? 76;
-  const range = telemetry?.battery_range_km ?? 403;
-  const estRange = telemetry?.est_battery_range_km ?? Math.round(range * 0.94);
+  const [latestDrain, setLatestDrain] = useState<VampireDrainRecord | null>(null);
+
+  useEffect(() => {
+    loadDrainHistory();
+  }, [vehicle]);
+
+  const loadDrainHistory = async () => {
+    let query = db.vampire_drain.orderBy('start_time').reverse();
+    if (vehicle?.id) {
+      query = db.vampire_drain.where('vehicle_id').equals(vehicle.id);
+    }
+    const first = await query.first();
+    if (first) setLatestDrain(first);
+  };
+
+  const soc = telemetry?.battery_level ?? 0;
+  const range = telemetry?.battery_range_km ?? 0;
+  const estRange = telemetry?.est_battery_range_km ?? (range > 0 ? Math.round(range * 0.94) : 0);
   const watchdog = sleepWatchdog.evaluate();
 
   // Capacidad disponible en kWh
-  const totalCapacity = vehicle?.battery_capacity_kwh ?? 78.1;
+  const totalCapacity = vehicle?.battery_capacity_kwh ?? 75;
   const currentKwh = +((soc / 100) * totalCapacity).toFixed(1);
 
   return (
@@ -73,12 +87,14 @@ export const BatterySection: React.FC<BatterySectionProps> = ({
                 className={soc > 20 ? 'text-emerald-400' : 'text-red-500'}
                 fill="transparent"
                 strokeDasharray={427}
-                strokeDashoffset={427 - (427 * soc) / 100}
+                strokeDashoffset={427 - (427 * (soc || 0)) / 100}
                 strokeLinecap="round"
               />
             </svg>
             <div className="absolute flex flex-col items-center">
-              <span className="text-4xl font-extrabold text-white font-heading tracking-tight">{soc}%</span>
+              <span className="text-4xl font-extrabold text-white font-heading tracking-tight">
+                {telemetry ? `${soc}%` : '--'}
+              </span>
               <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold">SOC Actual</span>
             </div>
           </div>
@@ -86,18 +102,22 @@ export const BatterySection: React.FC<BatterySectionProps> = ({
           <div className="grid grid-cols-2 gap-4 w-full mt-6 pt-4 border-t border-white/5">
             <div className="bg-black/30 p-3 rounded-xl border border-white/5">
               <div className="text-xs text-gray-400">Autonomía Homologada</div>
-              <div className="text-lg font-bold text-white font-heading">{range} km</div>
-              <div className="text-[10px] text-gray-400">WLTP estándar</div>
+              <div className="text-lg font-bold text-white font-heading">
+                {telemetry ? `${range} km` : '-- km'}
+              </div>
+              <div className="text-[10px] text-gray-400">WLTP reportado</div>
             </div>
             <div className="bg-black/30 p-3 rounded-xl border border-white/5">
               <div className="text-xs text-gray-400">Autonomía Real Estimada</div>
-              <div className="text-lg font-bold text-emerald-400 font-heading">{estRange} km</div>
-              <div className="text-[10px] text-emerald-400/80">Basado en tus consumos</div>
+              <div className="text-lg font-bold text-emerald-400 font-heading">
+                {telemetry ? `${estRange} km` : '-- km'}
+              </div>
+              <div className="text-[10px] text-emerald-400/80">Basado en consumo real</div>
             </div>
           </div>
 
           <div className="mt-3 text-xs text-gray-400">
-            Energía disponible: <span className="font-bold text-white">{currentKwh} kWh</span> de {totalCapacity} kWh
+            Energía disponible: <span className="font-bold text-white">{telemetry ? `${currentKwh} kWh` : '-- kWh'}</span> de {totalCapacity} kWh
           </div>
         </div>
       </div>
@@ -118,7 +138,7 @@ export const BatterySection: React.FC<BatterySectionProps> = ({
         </div>
 
         <p className="text-xs text-gray-300 leading-relaxed">
-          Esta aplicación local incorpora un <strong className="text-white">Watchdog inteligente</strong> que detiene las consultas continuas al coche tras 15 minutos de inactividad, permitiendo al ordenador entrar en sueño profundo y evitando agotar la batería de 12V y la tracción.
+          Esta aplicación local incorpora un <strong className="text-white">Watchdog inteligente</strong> que detiene las consultas continuas al coche tras 15 minutos de inactividad, permitiendo al ordenador entrar en sueño profundo y evitando agotar la batería.
         </p>
 
         <div className="bg-black/40 p-3.5 rounded-xl border border-white/5 flex items-center justify-between">
@@ -136,41 +156,47 @@ export const BatterySection: React.FC<BatterySectionProps> = ({
           </div>
         </div>
 
-        {/* Histórico Vampire Drain */}
-        <div className="grid grid-cols-3 gap-2.5 pt-2 text-center text-xs">
-          <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
-            <div className="text-gray-400">Pérdida en 24h</div>
-            <div className="text-sm font-bold text-emerald-400 mt-0.5">-0.8 %</div>
-            <div className="text-[10px] text-gray-500">~0.6 kWh</div>
+        {/* Histórico Vampire Drain real si existe */}
+        {latestDrain ? (
+          <div className="grid grid-cols-3 gap-2.5 pt-2 text-center text-xs">
+            <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
+              <div className="text-gray-400">Pérdida Reposo</div>
+              <div className="text-sm font-bold text-emerald-400 mt-0.5">-{latestDrain.loss_soc}%</div>
+              <div className="text-[10px] text-gray-500">~{latestDrain.loss_kwh} kWh</div>
+            </div>
+            <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
+              <div className="text-gray-400">Duración</div>
+              <div className="text-sm font-bold text-white mt-0.5">{latestDrain.duration_hours} h</div>
+              <div className="text-[10px] text-gray-500">en reposo</div>
+            </div>
+            <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
+              <div className="text-gray-400">Km Perdidos</div>
+              <div className="text-sm font-bold text-amber-400 mt-0.5">-{latestDrain.loss_km} km</div>
+              <div className="text-[10px] text-gray-500">estimado</div>
+            </div>
           </div>
-          <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
-            <div className="text-gray-400">Pérdida por Hora</div>
-            <div className="text-sm font-bold text-white mt-0.5">~0.03 %/h</div>
-            <div className="text-[10px] text-gray-500">Excelente</div>
+        ) : (
+          <div className="p-2.5 rounded-xl bg-white/5 text-center text-xs text-gray-400 border border-white/5">
+            El sistema registrará automáticamente las pérdidas cuando el coche duerma más de 45 minutos.
           </div>
-          <div className="bg-white/5 p-2.5 rounded-xl border border-white/5">
-            <div className="text-gray-400">Km Perdidos</div>
-            <div className="text-sm font-bold text-amber-400 mt-0.5">-4.2 km</div>
-            <div className="text-[10px] text-gray-500">último reposo</div>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Clima y Temperatura de Batería */}
+      {/* Clima y Temperatura */}
       <div className="glass-panel p-4 rounded-2xl border border-white/10 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
             <Thermometer className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-sm font-bold text-white">Temperatura Ambiente y Preacondicionado</div>
+            <div className="text-sm font-bold text-white">Temperatura Ambiente</div>
             <div className="text-xs text-gray-400">
-              Exterior: {telemetry?.outside_temp ?? 19}°C • Interior: {telemetry?.inside_temp ?? 21}°C
+              {telemetry ? `Exterior: ${telemetry.outside_temp}°C • Interior: ${telemetry.inside_temp}°C` : 'Sin conexión'}
             </div>
           </div>
         </div>
         <span className="text-xs font-semibold px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-          Temperatura Óptima
+          {telemetry ? 'Online' : 'En espera'}
         </span>
       </div>
     </div>

@@ -14,13 +14,17 @@ import {
   Car,
   Cloud,
   Lock,
-  LogOut
+  LogOut,
+  RefreshCw,
+  Trash2,
+  Database
 } from 'lucide-react';
 import { teslaSimulator } from '../services/simulator';
 import { backgroundSync } from '../services/backgroundSync';
 import { teslaApi } from '../services/teslaApi';
 import { tessieApi } from '../services/tessieApi';
 import { authService, type AuthProviderType } from '../services/authService';
+import { purgeDemoSeedData } from '../db/seedData';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -37,18 +41,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onToggleSimulator,
   onConnected,
 }) => {
-  const [activeTab, setActiveTab] = useState<'tesla' | 'tessie' | 'email'>('tessie');
+  const [activeTab, setActiveTab] = useState<'tessie' | 'tesla' | 'email'>('tessie');
   const [teslaToken, setTeslaToken] = useState<string>('');
   const [tessieToken, setTessieToken] = useState<string>(tessieApi.getToken() || '');
   const [emailInput, setEmailInput] = useState<string>('');
   const [passwordInput, setPasswordInput] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
+  const [syncingHistory, setSyncingHistory] = useState<boolean>(false);
+  const [syncProgressText, setSyncProgressText] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ success: boolean; message: string } | null>(null);
   const [simState, setSimState] = useState<string>('asleep');
 
   if (!isOpen) return null;
 
   const currentSession = authService.getSession();
+  const hasTessieConnected = tessieApi.hasToken();
 
   const handleSaveTesla = async () => {
     if (!teslaToken.trim()) return;
@@ -73,9 +80,57 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const res = await authService.loginWithTessie(tessieToken.trim());
       setFeedback(res);
       if (onConnected) onConnected();
-      setTimeout(() => setFeedback(null), 4000);
+      setTimeout(() => setFeedback(null), 6000);
     } catch (err: any) {
       setFeedback({ success: false, message: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSyncAllTessie = async () => {
+    if (!tessieApi.hasToken()) {
+      setFeedback({ success: false, message: 'Primero introduce y valida tu token de Tessie.' });
+      return;
+    }
+    setSyncingHistory(true);
+    setSyncProgressText('Iniciando sincronización...');
+    setFeedback(null);
+    try {
+      const vehicles = await tessieApi.getVehicles();
+      if (!vehicles || vehicles.length === 0) {
+        throw new Error('No se encontraron vehículos vinculados en Tessie.');
+      }
+      const car = vehicles[0];
+      const result = await tessieApi.syncAllTessieHistoricalData(car, (msg) => {
+        setSyncProgressText(msg);
+      });
+      await backgroundSync.performSyncTick();
+      setFeedback({
+        success: true,
+        message: `Sincronizados ${result.newDrives} viajes nuevos (${result.totalDrives} en total) y ${result.newCharges} cargas nuevas guardadas en Tessie.`,
+      });
+      if (onConnected) onConnected();
+    } catch (err: any) {
+      setFeedback({ success: false, message: err.message || 'Error al sincronizar datos de Tessie' });
+    } finally {
+      setSyncingHistory(false);
+      setSyncProgressText(null);
+    }
+  };
+
+  const handlePurgeDemos = async () => {
+    setLoading(true);
+    try {
+      const res = await purgeDemoSeedData();
+      setFeedback({
+        success: true,
+        message: `Datos demo eliminados con éxito (${res.deletedDrives} viajes y ${res.deletedCharges} cargas ficticias limpiadas).`,
+      });
+      if (onConnected) onConnected();
+      setTimeout(() => setFeedback(null), 5000);
+    } catch (err: any) {
+      setFeedback({ success: false, message: 'Error al limpiar datos demo.' });
     } finally {
       setLoading(false);
     }
@@ -98,7 +153,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleLogout = () => {
     authService.logout();
-    setFeedback({ success: true, message: 'Sesión cerrada. Modo demostración activo.' });
+    setFeedback({ success: true, message: 'Sesión cerrada.' });
     setTimeout(() => setFeedback(null), 3000);
   };
 
@@ -182,7 +237,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 Token Personal de Tessie
               </div>
               <p className="text-[11px] text-gray-400 mt-1">
-                Conéctate mediante tu token generado en <span className="text-cyan-300">dash.tessie.com/settings/api</span>. Proporciona telemetría directa sin necesidad de configurar una app de desarrollador de Tesla.
+                Conéctate mediante tu token generado en <span className="text-cyan-300">dash.tessie.com/settings/api</span>. Permite registrar toda la telemetría en tiempo real y recoger todos los viajes y recargas ya guardados.
               </p>
             </div>
             <div className="space-y-2">
@@ -194,13 +249,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
               />
               <button
-                disabled={loading}
+                disabled={loading || syncingHistory}
                 onClick={handleSaveTessie}
                 className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20 transition disabled:opacity-50"
               >
                 {loading ? <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                 Validar y Conectar con Tessie
               </button>
+
+              {/* Botón para recoger todo el histórico guardado en Tessie */}
+              {hasTessieConnected && (
+                <div className="pt-2">
+                  <button
+                    disabled={syncingHistory || loading}
+                    onClick={handleSyncAllTessie}
+                    className="w-full py-2 px-3 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 active:scale-95 text-cyan-300 font-semibold text-xs flex items-center justify-center gap-2 border border-cyan-500/30 transition disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncingHistory ? 'animate-spin' : ''}`} />
+                    {syncingHistory ? (syncProgressText || 'Sincronizando...') : '📥 Recoger todos los datos guardados en Tessie'}
+                  </button>
+                  <p className="text-[10px] text-gray-400 text-center mt-1">
+                    Importa todos tus viajes históricos, sesiones de recarga y salud celular directamente a la app.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -214,7 +286,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 Token Directo de Tesla (Fleet / Owner API)
               </div>
               <p className="text-[11px] text-gray-400 mt-1">
-                Token de acceso de Tesla oficial para conexión de flota directa sin intermediarios.
+                Token de acceso de Tesla oficial para conexión directa.
               </p>
             </div>
             <div className="space-y-2">
@@ -243,10 +315,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div>
               <div className="text-xs font-bold text-white flex items-center gap-1.5">
                 <Mail className="w-3.5 h-3.5 text-purple-400" />
-                Autenticación Propia (Email y Contraseña)
+                Autenticación Local (Email y Contraseña)
               </div>
               <p className="text-[11px] text-gray-400 mt-1">
-                Inicia sesión con tu cuenta de usuario unificada para sincronizar tus ajustes locales.
+                Inicia sesión con tu cuenta de usuario para almacenar tus ajustes y rutas.
               </p>
             </div>
             <div className="space-y-2">
@@ -287,15 +359,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         )}
 
+        {/* Limpieza de Datos Demo Ficticios */}
+        <div className="glass-panel p-3.5 rounded-xl border border-white/5 flex items-center justify-between">
+          <div>
+            <div className="text-xs font-bold text-white flex items-center gap-1.5">
+              <Database className="w-3.5 h-3.5 text-amber-400" />
+              Limpiar Datos Demo Ficticios
+            </div>
+            <div className="text-[11px] text-gray-400 mt-0.5">
+              Elimina viajes y cargas de prueba que no fueron realizados con tu coche
+            </div>
+          </div>
+          <button
+            disabled={loading}
+            onClick={handlePurgeDemos}
+            className="px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-semibold flex items-center gap-1 border border-amber-500/30 transition disabled:opacity-50"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Limpiar
+          </button>
+        </div>
+
         {/* Interruptor Modo Simulador vs Tesla Real */}
         <div className="glass-panel p-3.5 rounded-xl border border-white/5 flex items-center justify-between">
           <div>
             <div className="text-xs font-bold text-white flex items-center gap-1.5">
               <Play className="w-3.5 h-3.5 text-purple-400" />
-              Modo Demostración / Simulador
+              Modo Simulador
             </div>
             <div className="text-[11px] text-gray-400 mt-0.5">
-              Prueba rutas, cargas y telemetría sin vincular el coche
+              Genera telemetría dinámica en vivo para pruebas sin coche
             </div>
           </div>
           <button
@@ -362,7 +455,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="glass-panel p-3.5 rounded-xl border border-white/5 flex items-start gap-2.5 text-xs text-gray-400">
           <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
           <p className="leading-relaxed">
-            <strong className="text-white">100% Privado y Seguro:</strong> Las claves de API y sesiones se conservan únicamente en el almacenamiento protegido de tu dispositivo.
+            <strong className="text-white">100% Privado y Seguro:</strong> Tus claves de API y datos de viajes se conservan exclusivamente en tu dispositivo, sin servidores externos intermediarios.
           </p>
         </div>
       </div>

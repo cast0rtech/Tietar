@@ -11,7 +11,9 @@ import {
   Thermometer,
   Shield,
   Flame,
-  ArrowUpRight
+  ArrowUpRight,
+  Link,
+  Settings
 } from 'lucide-react';
 import type { VehicleTelemetry, Vehicle } from '../types/tesla';
 
@@ -22,6 +24,7 @@ interface MainMenuGridProps {
   vehicle: Vehicle | null;
   onSelectSection: (section: ActiveSection) => void;
   onExecuteQuickCommand: (cmd: string) => void;
+  onOpenSettings?: () => void;
   statsSummary: {
     lastDriveKm: number;
     lastDriveWhKm: number;
@@ -37,20 +40,14 @@ export const MainMenuGrid: React.FC<MainMenuGridProps> = ({
   vehicle,
   onSelectSection,
   onExecuteQuickCommand,
+  onOpenSettings,
   statsSummary,
 }) => {
-  const soc = telemetry?.battery_level ?? 76;
-  const range = telemetry?.battery_range_km ?? 403;
+  const soc = telemetry?.battery_level ?? 0;
+  const range = telemetry?.battery_range_km ?? 0;
   const isCharging = telemetry?.state === 'charging' || telemetry?.charging_state === 'Charging';
   const locked = telemetry?.locked ?? true;
   const climateOn = telemetry?.is_climate_on ?? false;
-
-  // Color de batería dinámico
-  const getBatteryColor = (level: number) => {
-    if (level <= 20) return 'from-red-500 to-rose-600';
-    if (level <= 45) return 'from-amber-500 to-orange-600';
-    return 'from-emerald-500 to-teal-500';
-  };
 
   return (
     <div className="space-y-4 pb-20">
@@ -63,16 +60,16 @@ export const MainMenuGrid: React.FC<MainMenuGridProps> = ({
               Telemetría en Tiempo Real
             </div>
             <div className="text-2xl font-black text-white font-heading mt-0.5">
-              {vehicle?.display_name || 'Tesla Model Y'}
+              {vehicle?.display_name || 'Tesla (Sin vincular)'}
             </div>
             <div className="flex items-center gap-3 text-xs text-gray-300 mt-2">
               <span className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded-lg border border-white/5">
                 <Gauge className="w-3.5 h-3.5 text-cyan-400" />
-                {vehicle?.odometer?.toLocaleString('es-ES') || '43.280'} km
+                {vehicle?.odometer ? `${vehicle.odometer.toLocaleString('es-ES')} km` : '0 km'}
               </span>
               <span className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded-lg border border-white/5">
                 <Thermometer className="w-3.5 h-3.5 text-amber-400" />
-                {telemetry?.inside_temp ?? 21}°C int / {telemetry?.outside_temp ?? 19}°C ext
+                {telemetry ? `${telemetry.inside_temp}°C int / ${telemetry.outside_temp}°C ext` : '--°C'}
               </span>
             </div>
           </div>
@@ -99,20 +96,45 @@ export const MainMenuGrid: React.FC<MainMenuGridProps> = ({
                   className={soc > 20 ? 'text-emerald-400' : 'text-red-500'}
                   fill="transparent"
                   strokeDasharray={150}
-                  strokeDashoffset={150 - (150 * soc) / 100}
+                  strokeDashoffset={150 - (150 * (soc || 0)) / 100}
                   strokeLinecap="round"
                 />
               </svg>
-              <span className="absolute text-sm font-bold text-white font-heading">{soc}%</span>
+              <span className="absolute text-sm font-bold text-white font-heading">{telemetry ? `${soc}%` : '--'}</span>
             </div>
             <div>
               <div className="text-xs text-gray-400">Autonomía</div>
-              <div className="text-lg font-bold text-white tracking-tight">{range} km</div>
-              <div className="text-[10px] text-emerald-400">Est: {telemetry?.est_battery_range_km ?? Math.round(range * 0.94)} km</div>
+              <div className="text-lg font-bold text-white tracking-tight">
+                {telemetry ? `${range} km` : '-- km'}
+              </div>
+              <div className="text-[10px] text-emerald-400">
+                {telemetry ? `Est: ${telemetry.est_battery_range_km || Math.round(range * 0.94)} km` : 'En espera'}
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Banner de invitación a conectar si no hay vehículo vinculado */}
+      {!vehicle && onOpenSettings && (
+        <div className="p-4 rounded-2xl bg-cyan-950/30 border border-cyan-500/30 flex items-center justify-between gap-3 animate-fadeIn">
+          <div>
+            <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+              <Link className="w-4 h-4 text-cyan-400" />
+              Conecta tu vehículo para ver datos reales
+            </div>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              Configura tu Token de Tessie o Tesla en Ajustes para registrar telemetría y recoger todo tu historial de viajes.
+            </p>
+          </div>
+          <button
+            onClick={onOpenSettings}
+            className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shrink-0 shadow-lg shadow-cyan-600/20 transition"
+          >
+            Ajustes
+          </button>
+        </div>
+      )}
 
       {/* Título de Menús Principales */}
       <div className="flex items-center justify-between px-1">
@@ -145,10 +167,10 @@ export const MainMenuGrid: React.FC<MainMenuGridProps> = ({
           <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-xs">
             <div>
               <span className="text-gray-400">Nivel actual:</span>{' '}
-              <span className="font-bold text-white">{soc}% ({range} km)</span>
+              <span className="font-bold text-white">{telemetry ? `${soc}% (${range} km)` : 'Desconectado'}</span>
             </div>
             <div className="text-emerald-400 font-medium">
-              Vampire Drain: -0.9% / 24h
+              {telemetry?.charging_state === 'Charging' ? 'Cargando' : (telemetry?.state === 'asleep' ? 'En reposo' : 'En línea')}
             </div>
           </div>
         </div>
@@ -179,7 +201,7 @@ export const MainMenuGrid: React.FC<MainMenuGridProps> = ({
               </span>
             </div>
             <div className="text-gray-300 font-medium">
-              Última: +{statsSummary.lastChargeKwh} kWh
+              {statsSummary.lastChargeKwh > 0 ? `Última: +${statsSummary.lastChargeKwh} kWh` : 'Sin cargas registradas'}
             </div>
           </div>
         </div>
@@ -205,10 +227,14 @@ export const MainMenuGrid: React.FC<MainMenuGridProps> = ({
           <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-xs">
             <div>
               <span className="text-gray-400">Último:</span>{' '}
-              <span className="font-bold text-white">{statsSummary.lastDriveKm} km</span>
+              <span className="font-bold text-white">
+                {statsSummary.totalDrivesCount > 0 ? `${statsSummary.lastDriveKm} km` : 'Sin viajes'}
+              </span>
             </div>
             <div className="text-indigo-300 font-medium">
-              {statsSummary.lastDriveWhKm} Wh/km • {statsSummary.totalDrivesCount} viajes
+              {statsSummary.totalDrivesCount > 0 
+                ? `${statsSummary.lastDriveWhKm} Wh/km • ${statsSummary.totalDrivesCount} viajes`
+                : '0 viajes registrados'}
             </div>
           </div>
         </div>
@@ -277,10 +303,14 @@ export const MainMenuGrid: React.FC<MainMenuGridProps> = ({
           <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-xs">
             <div>
               <span className="text-gray-400">Salud de celda:</span>{' '}
-              <span className="font-bold text-emerald-400">{statsSummary.healthPercent}%</span>
+              <span className="font-bold text-emerald-400">
+                {statsSummary.healthPercent > 0 ? `${statsSummary.healthPercent}%` : '--'}
+              </span>
             </div>
             <div className="text-gray-300 font-medium">
-              Degradación: {(100 - statsSummary.healthPercent).toFixed(1)}%
+              {statsSummary.healthPercent > 0 
+                ? `Degradación: ${(100 - statsSummary.healthPercent).toFixed(1)}%` 
+                : 'Sin registros'}
             </div>
           </div>
         </div>
@@ -309,7 +339,7 @@ export const MainMenuGrid: React.FC<MainMenuGridProps> = ({
               <span className="font-bold text-white">{statsSummary.savedRoutesCount}</span>
             </div>
             <div className="text-rose-400 font-medium flex items-center gap-1">
-              <span>Ver mapa gratuito</span>
+              <span>Ver mapas</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
             </div>
           </div>

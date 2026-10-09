@@ -2,6 +2,8 @@
 import { teslaApi } from './teslaApi';
 import { tessieApi } from './tessieApi';
 import { backgroundSync } from './backgroundSync';
+import { db } from '../db/database';
+import { purgeDemoSeedData } from '../db/seedData';
 
 export type AuthProviderType = 'demo' | 'tesla' | 'tessie' | 'email';
 
@@ -24,8 +26,8 @@ const STORAGE_KEYS = {
 
 export class AuthService {
   private currentSession: UserSession = {
-    id: 'local_demo',
-    displayName: 'Demo Driver',
+    id: 'local_user',
+    displayName: 'Conductor Tesla',
     provider: 'demo',
     isAuthenticated: false,
   };
@@ -69,7 +71,7 @@ export class AuthService {
       const isRealProvider = (savedProvider === 'tessie' && !!savedTessieToken) || (savedProvider === 'tesla' && !!savedTeslaToken);
       backgroundSync.setSimulatorMode(!isRealProvider);
     } catch {
-      // Fallback a demo si falla el parseo
+      // Fallback
     }
   }
 
@@ -83,14 +85,24 @@ export class AuthService {
     if (!trimmed) throw new Error('El token de Tessie no puede estar vacío.');
 
     tessieApi.setToken(trimmed);
+
+    // Limpiar restos de demos anteriores para que solo aparezcan datos reales del vehículo
+    await purgeDemoSeedData();
+
     // Validación real contra la API de Tessie
     try {
       const vehicles = await tessieApi.getVehicles();
-      const firstCarName = vehicles[0]?.display_name || 'Tesla (Tessie)';
+      if (!vehicles || vehicles.length === 0) {
+        throw new Error('No se encontraron vehículos vinculados en tu cuenta de Tessie.');
+      }
+
+      const realCar = vehicles[0];
+      realCar.is_selected = true;
+      await db.vehicles.put(realCar);
 
       this.currentSession = {
         id: `tessie_${Date.now()}`,
-        displayName: firstCarName,
+        displayName: realCar.display_name,
         provider: 'tessie',
         token: trimmed,
         isAuthenticated: true,
@@ -102,9 +114,15 @@ export class AuthService {
 
       // Activar inmediatamente modo real y forzar lectura de telemetría online
       backgroundSync.setSimulatorMode(false);
+
+      // Recoger inmediatamente todo el histórico guardado en Tessie (viajes, recargas, salud)
+      const syncResult = await tessieApi.syncAllTessieHistoricalData(realCar);
       await backgroundSync.performSyncTick();
 
-      return { success: true, message: `Conectado a Tessie exitosamente (${vehicles.length} vehículos). Telemetría en vivo activa.` };
+      return { 
+        success: true, 
+        message: `Conectado a Tessie exitosamente (${vehicles.length} vehículos). Sincronizados ${syncResult.totalDrives} viajes y ${syncResult.totalCharges} recargas guardadas.` 
+      };
     } catch (err: any) {
       throw new Error(`Error validando token con Tessie: ${err.message}`);
     }
@@ -116,6 +134,8 @@ export class AuthService {
     if (!trimmed) throw new Error('El token de Tesla no puede estar vacío.');
 
     teslaApi.setToken(trimmed);
+    await purgeDemoSeedData();
+
     this.currentSession = {
       id: `tesla_${Date.now()}`,
       displayName: 'Tesla Driver',
@@ -148,7 +168,6 @@ export class AuthService {
     const users = rawUsers ? JSON.parse(rawUsers) : {};
 
     if (!users[normEmail]) {
-      // Si no existe, lo registramos automáticamente para facilitar el onboarding en la app local
       users[normEmail] = {
         email: normEmail,
         displayName: normEmail.split('@')[0],
@@ -173,8 +192,8 @@ export class AuthService {
 
   logout() {
     this.currentSession = {
-      id: 'local_demo',
-      displayName: 'Demo Driver',
+      id: 'local_user',
+      displayName: 'Conductor',
       provider: 'demo',
       isAuthenticated: false,
     };
