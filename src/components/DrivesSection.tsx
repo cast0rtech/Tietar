@@ -544,6 +544,7 @@ export const DrivesSection: React.FC<DrivesSectionProps> = ({
               </button>
             </div>
           </div>
+        </div>
       )}
     </div>
   );
