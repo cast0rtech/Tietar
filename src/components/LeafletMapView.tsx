@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { ExternalLink, Compass, Layers, Check } from 'lucide-react';
+import { ExternalLink, Compass, Layers, Check, Maximize2, Minimize2, MapPin, Navigation, X } from 'lucide-react';
 import type { DrivePoint } from '../types/tesla';
 
 interface LeafletMapViewProps {
@@ -50,6 +50,8 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const [currentLayer, setCurrentLayer] = useState<TileSource>('osm');
   const [showLayerMenu, setShowLayerMenu] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showNavMenu, setShowNavMenu] = useState(false);
 
   // Inicialización del Mapa
   useEffect(() => {
@@ -170,6 +172,21 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
     };
   }, [points]);
 
+  // Recalcular dimensiones al alternar pantalla completa
+  useEffect(() => {
+    if (mapInstanceRef.current) {
+      const timer = setTimeout(() => {
+        mapInstanceRef.current?.invalidateSize();
+        if (points.length > 0) {
+          const latLngs = points.map(p => [p.latitude, p.longitude] as [number, number]);
+          const bounds = L.latLngBounds(latLngs);
+          mapInstanceRef.current?.fitBounds(bounds, { padding: [30, 30] });
+        }
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [isFullscreen]);
+
   // Cambiar capa de mapa dinámicamente
   const handleLayerChange = (layer: TileSource) => {
     setCurrentLayer(layer);
@@ -188,19 +205,61 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
     tileLayerRef.current = newLayer;
   };
 
-  // Abrir coordenadas en app de mapas o navegador universal
-  const openInExternalMaps = () => {
+  // Abrir en Apple Maps oficial (con ruta completa de origen a destino)
+  const openAppleMaps = () => {
     if (points.length === 0) return;
+    const start = points[0];
     const dest = points[points.length - 1];
-    
-    // Si estamos en un móvil con soporte de protocolo geo:
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isMobile) {
-      window.open(`geo:${dest.latitude},${dest.longitude}?q=${dest.latitude},${dest.longitude}(Destino+Tesla)`, '_system');
+
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const hasBothPoints = points.length > 1;
+
+    // URL nativa de Apple Maps
+    const schemeUrl = hasBothPoints
+      ? `maps://?saddr=${start.latitude},${start.longitude}&daddr=${dest.latitude},${dest.longitude}&dirflg=d`
+      : `maps://?q=${encodeURIComponent(endAddress || 'Destino Tesla')}&ll=${dest.latitude},${dest.longitude}&dirflg=d`;
+
+    const universalUrl = hasBothPoints
+      ? `https://maps.apple.com/?saddr=${start.latitude},${start.longitude}&daddr=${dest.latitude},${dest.longitude}&dirflg=d`
+      : `https://maps.apple.com/?q=${encodeURIComponent(endAddress || 'Destino Tesla')}&ll=${dest.latitude},${dest.longitude}&dirflg=d`;
+
+    if (isIOS) {
+      // En iOS abrimos el esquema nativo de Apple Maps
+      window.location.href = schemeUrl;
+      setTimeout(() => {
+        window.open(universalUrl, '_system');
+      }, 350);
     } else {
-      // En PC / navegador: abrir OpenStreetMap gratuito directamente
-      window.open(`https://www.openstreetmap.org/?mlat=${dest.latitude}&mlon=${dest.longitude}#map=15/${dest.latitude}/${dest.longitude}`, '_blank');
+      window.open(universalUrl, '_blank');
     }
+  };
+
+  // Abrir en Google Maps (con coordenadas exactas del trayecto)
+  const openGoogleMaps = () => {
+    if (points.length === 0) return;
+    const start = points[0];
+    const dest = points[points.length - 1];
+
+    const hasBothPoints = points.length > 1;
+    const googleUrl = hasBothPoints
+      ? `https://www.google.com/maps/dir/?api=1&origin=${start.latitude},${start.longitude}&destination=${dest.latitude},${dest.longitude}&travelmode=driving`
+      : `https://www.google.com/maps/search/?api=1&query=${dest.latitude},${dest.longitude}`;
+
+    window.open(googleUrl, '_system') || window.open(googleUrl, '_blank');
+  };
+
+  // Abrir en OpenStreetMap web
+  const openOpenStreetMap = () => {
+    if (points.length === 0) return;
+    const start = points[0];
+    const dest = points[points.length - 1];
+
+    const hasBothPoints = points.length > 1;
+    const osmUrl = hasBothPoints
+      ? `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${start.latitude}%2C${start.longitude}%3B${dest.latitude}%2C${dest.longitude}`
+      : `https://www.openstreetmap.org/?mlat=${dest.latitude}&mlon=${dest.longitude}#map=16/${dest.latitude}/${dest.longitude}`;
+
+    window.open(osmUrl, '_system') || window.open(osmUrl, '_blank');
   };
 
   if (points.length === 0) {
@@ -224,12 +283,57 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
   }
 
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden border border-white/10 shadow-xl bg-[#14171d]">
+    <div
+      className={
+        isFullscreen
+          ? 'fixed inset-0 z-[100] bg-[#0c1017] flex flex-col p-3 sm:p-5 animate-fadeIn'
+          : 'relative w-full rounded-2xl overflow-hidden border border-white/10 shadow-xl bg-[#14171d]'
+      }
+    >
+      {/* Cabecera Exclusiva Modo Pantalla Completa */}
+      {isFullscreen && (
+        <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-2 shrink-0">
+          <div className="flex items-center gap-2 max-w-[65%] truncate">
+            <MapPin className="w-5 h-5 text-rose-400 shrink-0" />
+            <div className="truncate">
+              <span className="text-sm font-bold text-white font-heading truncate block">
+                {endAddress || 'Trayecto Tesla'}
+              </span>
+              <span className="text-xs text-gray-400 truncate block">
+                {startAddress ? `${startAddress} → ${endAddress}` : 'Vista ampliada del trayecto'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowNavMenu(true)}
+              className="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 active:scale-95 text-cyan-300 font-semibold text-xs border border-cyan-500/30 flex items-center gap-1.5 transition"
+            >
+              <Navigation className="w-3.5 h-3.5" />
+              <span>Navegar</span>
+            </button>
+
+            <button
+              onClick={() => setIsFullscreen(false)}
+              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white font-semibold text-xs border border-white/10 flex items-center gap-1.5 transition"
+              title="Salir de pantalla completa"
+            >
+              <Minimize2 className="w-3.5 h-3.5" />
+              <span>Cerrar</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Contenedor del Mapa Leaflet */}
-      <div ref={mapContainerRef} className={`w-full ${heightClass} z-10`} />
+      <div
+        ref={mapContainerRef}
+        className={isFullscreen ? 'flex-1 w-full rounded-2xl z-10 overflow-hidden' : `w-full ${heightClass} z-10`}
+      />
 
       {/* Selector de Capas de Mapa (Esquina Superior Derecha) */}
-      <div className="absolute top-2.5 right-2.5 z-20">
+      <div className={`absolute ${isFullscreen ? 'top-16' : 'top-2.5'} right-2.5 z-20`}>
         <button
           onClick={() => setShowLayerMenu(prev => !prev)}
           className="bg-black/85 hover:bg-black text-white p-2 rounded-xl border border-white/20 shadow-lg flex items-center gap-1.5 text-xs transition active:scale-95"
@@ -260,41 +364,146 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
         )}
       </div>
 
-      {/* Badge Informativo Superior Izquierda */}
-      <div className="absolute top-2.5 left-2.5 z-20 pointer-events-none">
-        <div className="bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-lg border border-emerald-500/30 text-[10px] text-emerald-300 flex items-center gap-1.5 shadow-md">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>OpenStreetMap Libre (Sin API Key)</span>
+      {/* Badge Informativo Superior Izquierda (solo en modo no-fullscreen) */}
+      {!isFullscreen && (
+        <div className="absolute top-2.5 left-2.5 z-20 pointer-events-none">
+          <div className="bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-lg border border-emerald-500/30 text-[10px] text-emerald-300 flex items-center gap-1.5 shadow-md">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>OpenStreetMap Libre</span>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Barra Inferior: Leyenda y Botón App de Mapas */}
+      {/* Barra Inferior: Leyenda, Pantalla Completa y Navegar */}
       <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between pointer-events-none">
         {/* Leyenda de colores */}
-        <div className="bg-black/85 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-white/10 text-[10px] text-gray-300 flex items-center gap-2.5 pointer-events-auto shadow-lg">
+        <div className="bg-black/85 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-white/10 text-[10px] text-gray-300 flex items-center gap-2 pointer-events-auto shadow-lg">
           <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-            Regeneración
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="hidden sm:inline">Regen</span>
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
-            Crucero
+            <span className="w-2 h-2 rounded-full bg-cyan-400" />
+            <span className="hidden sm:inline">Crucero</span>
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-            Aceleración
+            <span className="w-2 h-2 rounded-full bg-rose-500" />
+            <span className="hidden sm:inline">Acel</span>
           </span>
         </div>
 
-        {/* Botón Abrir en App de Mapas */}
-        <button
-          onClick={openInExternalMaps}
-          className="bg-black/90 hover:bg-black active:scale-95 text-white text-xs font-semibold px-3 py-1.5 rounded-xl border border-white/20 flex items-center gap-1.5 shadow-lg pointer-events-auto transition"
-        >
-          <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Abrir mapa</span>
-        </button>
+        {/* Botones de Acción */}
+        <div className="flex items-center gap-1.5 pointer-events-auto">
+          {!isFullscreen && (
+            <button
+              onClick={() => setIsFullscreen(true)}
+              className="bg-black/90 hover:bg-black active:scale-95 text-white text-xs font-semibold px-2.5 py-1.5 rounded-xl border border-white/20 flex items-center gap-1 shadow-lg transition"
+              title="Ver mapa en pantalla completa"
+            >
+              <Maximize2 className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">Pantalla completa</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowNavMenu(true)}
+            className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 active:scale-95 text-white text-xs font-semibold px-3 py-1.5 rounded-xl border border-cyan-400/30 flex items-center gap-1.5 shadow-lg transition"
+            title="Abrir en Apple Maps o Google Maps"
+          >
+            <Navigation className="w-3.5 h-3.5" />
+            <span>Mapas</span>
+          </button>
+        </div>
       </div>
+
+      {/* Modal / Selector de Navegación Externa con Coordenadas Exactas */}
+      {showNavMenu && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-sm rounded-2xl glass-panel p-5 border border-white/15 space-y-4 shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Navigation className="w-5 h-5 text-cyan-400" />
+                <h4 className="text-sm font-bold text-white font-heading">Abrir Ruta en Navegación</h4>
+              </div>
+              <button
+                onClick={() => setShowNavMenu(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-300 leading-relaxed">
+              Selecciona tu aplicación para visualizar la ruta y destino con las coordenadas exactas de este trayecto:
+            </p>
+
+            <div className="space-y-2">
+              {/* Apple Maps */}
+              <button
+                onClick={() => {
+                  setShowNavMenu(false);
+                  openAppleMaps();
+                }}
+                className="w-full p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-between text-left transition active:scale-98"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-lg">
+                    🍏
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <span>Mapas de Apple</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 font-medium">Nativo iOS</span>
+                    </div>
+                    <div className="text-[11px] text-gray-400">Ruta directa sin apps externas</div>
+                  </div>
+                </div>
+                <ExternalLink className="w-4 h-4 text-gray-400" />
+              </button>
+
+              {/* Google Maps */}
+              <button
+                onClick={() => {
+                  setShowNavMenu(false);
+                  openGoogleMaps();
+                }}
+                className="w-full p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-between text-left transition active:scale-98"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-lg">
+                    🗺️
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">Google Maps</div>
+                    <div className="text-[11px] text-gray-400">Direcciones y tráfico en tiempo real</div>
+                  </div>
+                </div>
+                <ExternalLink className="w-4 h-4 text-gray-400" />
+              </button>
+
+              {/* OpenStreetMap */}
+              <button
+                onClick={() => {
+                  setShowNavMenu(false);
+                  openOpenStreetMap();
+                }}
+                className="w-full p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-between text-left transition active:scale-98"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-lg">
+                    🌐
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">OpenStreetMap</div>
+                    <div className="text-[11px] text-gray-400">Visor web cartográfico abierto</div>
+                  </div>
+                </div>
+                <ExternalLink className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
