@@ -445,8 +445,8 @@ export const DrivesSection: React.FC<DrivesSectionProps> = ({
 
       {/* MODAL DETALLES DEL TRAYECTO SELECCIONADO */}
       {isDetailModalOpen && selectedDrive && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-lg rounded-2xl glass-panel p-4 sm:p-5 border border-white/10 space-y-3.5 shadow-2xl relative max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 safe-modal bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-lg rounded-2xl glass-panel p-4 sm:p-5 border border-white/10 space-y-3.5 shadow-2xl relative max-h-[88vh] overflow-y-auto">
             {/* Cabecera del Modal */}
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">

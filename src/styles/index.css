@@ -26,6 +26,39 @@
   }
 }
 
+/* Soporte Safe Area para Face ID, Dynamic Island, Notch y rotación vertical/horizontal */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+.safe-area-header {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.85rem);
+  padding-left: calc(env(safe-area-inset-left, 0px) + 1rem);
+  padding-right: calc(env(safe-area-inset-right, 0px) + 1rem);
+}
+
+.safe-area-main {
+  padding-left: calc(env(safe-area-inset-left, 0px) + 1rem);
+  padding-right: calc(env(safe-area-inset-right, 0px) + 1rem);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 6rem);
+}
+
+.safe-area-bottom {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.6rem);
+  padding-left: calc(env(safe-area-inset-left, 0px) + 0.75rem);
+  padding-right: calc(env(safe-area-inset-right, 0px) + 0.75rem);
+}
+
+.safe-modal {
+  padding-top: max(env(safe-area-inset-top, 0px), 0.75rem);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0.75rem);
+  padding-left: max(env(safe-area-inset-left, 0px), 1rem);
+  padding-right: max(env(safe-area-inset-right, 0px), 1rem);
+}
+
 /* Glassmorphism card utility */
 .glass-panel {
   background: rgba(20, 23, 29, 0.75);

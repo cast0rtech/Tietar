@@ -280,12 +280,12 @@ export const App: React.FC = () => {
       )}
 
       {/* Contenido Principal */}
-      <main className="flex-1 max-w-4xl w-full mx-auto p-4">
+      <main className="flex-1 max-w-4xl w-full mx-auto p-4 safe-area-main transition-all">
         {renderActiveSection()}
       </main>
 
       {/* Barra de Navegación Rápida Inferior (Tipo App Móvil Nativa) */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 glass-panel border-t border-white/10 px-2 py-2 flex items-center justify-around max-w-md mx-auto sm:rounded-t-2xl">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 glass-panel border-t border-white/10 safe-area-bottom pt-2 flex items-center justify-around max-w-md mx-auto sm:rounded-t-2xl transition-all">
         <button
           onClick={() => setActiveSection('home')}
           className={`flex flex-col items-center py-1 px-2 rounded-xl transition ${

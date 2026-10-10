@@ -71,7 +71,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full glass-panel border-b border-white/10 px-4 py-3">
+    <header className="sticky top-0 z-40 w-full glass-panel border-b border-white/10 safe-area-header pb-3 transition-all">
       <div className="max-w-4xl mx-auto flex items-center justify-between">
         {/* Nombre del Vehículo y Estado con Logo Castor Tech */}
         <div className="flex items-center gap-3">

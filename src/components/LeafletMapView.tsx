@@ -286,7 +286,7 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
     <div
       className={
         isFullscreen
-          ? 'fixed inset-0 z-[100] bg-[#0c1017] flex flex-col p-3 sm:p-5 animate-fadeIn'
+          ? 'fixed inset-0 z-[100] bg-[#0c1017] flex flex-col p-3 sm:p-5 safe-modal animate-fadeIn'
           : 'relative w-full rounded-2xl overflow-hidden border border-white/10 shadow-xl bg-[#14171d]'
       }
     >
@@ -418,8 +418,8 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
 
       {/* Modal / Selector de Navegación Externa con Coordenadas Exactas */}
       {showNavMenu && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-sm rounded-2xl glass-panel p-5 border border-white/15 space-y-4 shadow-2xl relative">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 safe-modal bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-sm rounded-2xl glass-panel p-5 border border-white/15 space-y-4 shadow-2xl relative max-h-[88vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
                 <Navigation className="w-5 h-5 text-cyan-400" />

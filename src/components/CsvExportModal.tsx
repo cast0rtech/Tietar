@@ -23,8 +23,8 @@ export const CsvExportModal: React.FC<CsvExportModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-      <div className="w-full max-w-md rounded-2xl glass-panel p-5 border border-white/10 space-y-4 shadow-2xl relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 safe-modal bg-black/70 backdrop-blur-sm animate-fadeIn">
+      <div className="w-full max-w-md rounded-2xl glass-panel p-5 border border-white/10 space-y-4 shadow-2xl relative max-h-[88vh] overflow-y-auto">
         {/* Botón Cerrar */}
         <button
           onClick={onClose}
